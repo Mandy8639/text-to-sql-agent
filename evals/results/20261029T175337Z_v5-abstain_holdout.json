@@ -1,0 +1,2287 @@
+{
+  "meta": {
+    "run_at": "2026-10-29T17:53:37Z",
+    "agent": "v5",
+    "agent_version": "v5-abstain",
+    "model": "claude-haiku-5-5",
+    "effort": "medium",
+    "split": "holdout",
+    "partial": false,
+    "workers": 4,
+    "wall_clock_s": 30.8,
+    "commit": "fd3c706-dirty",
+    "stores_rows": true,
+    "schema_doc_version": 3,
+    "invalid": false
+  },
+  "metrics": {
+    "n": 20,
+    "n_answerable": 17,
+    "n_abstain_expected": 3,
+    "execution_accuracy": 76.5,
+    "overall_accuracy": 80.0,
+    "valid_sql_rate": 100.0,
+    "sql_produced_rate": 100.0,
+    "abstention_accuracy": 100.0,
+    "false_abstention_rate": 0.0,
+    "errors_by_stage": {},
+    "n_retried": 1,
+    "retry_success_rate": 100.0,
+    "avg_attempts": 1.05,
+    "latency_ms_p50": 3371.8031250173226,
+    "latency_ms_p95": 8877.8960420168,
+    "avg_input_tokens": 7048,
+    "avg_output_tokens": 995,
+    "avg_cost_usd": 0.0012,
+    "total_cost_usd": 0.024,
+    "by_difficulty": {
+      "easy": {
+        "n": 4,
+        "correct": 4,
+        "accuracy": 100.0
+      },
+      "hard": {
+        "n": 6,
+        "correct": 4,
+        "accuracy": 66.7
+      },
+      "medium": {
+        "n": 7,
+        "correct": 5,
+        "accuracy": 71.4
+      }
+    },
+    "by_category": {
+      "aggregation": {
+        "n": 4,
+        "correct": 3,
+        "accuracy": 75.0
+      },
+      "ambiguous": {
+        "n": 1,
+        "correct": 1,
+        "accuracy": 100.0
+      },
+      "filtering": {
+        "n": 3,
+        "correct": 3,
+        "accuracy": 100.0
+      },
+      "joins": {
+        "n": 5,
+        "correct": 3,
+        "accuracy": 60.0
+      },
+      "refusal": {
+        "n": 2,
+        "correct": 2,
+        "accuracy": 100.0
+      },
+      "time_series": {
+        "n": 2,
+        "correct": 1,
+        "accuracy": 50.0
+      },
+      "window_functions": {
+        "n": 3,
+        "correct": 3,
+        "accuracy": 100.0
+      }
+    }
+  },
+  "questions": [
+    {
+      "id": "h01",
+      "question": "How many orders did we get in November 2017?",
+      "category": "filtering",
+      "difficulty": "easy",
+      "expected": "answer",
+      "outcome": "answer",
+      "correct": true,
+      "reason": "match",
+      "sql": "SELECT count(*) AS orders\nFROM orders\nWHERE order_purchase_timestamp >= '2017-11-01' AND order_purchase_timestamp < '2017-12-01'",
+      "error": null,
+      "error_stage": null,
+      "note": "This counts every order placed in November 2017 regardless of status, since order counts include all statuses.",
+      "pred_rows": 1,
+      "gold_rows": 1,
+      "input_tokens": 6476,
+      "output_tokens": 139,
+      "cost_usd": 0.0007171,
+      "latency_ms": 1252.9680830193684,
+      "pred_columns": [
+        "orders"
+      ],
+      "pred_data": [
+        [
+          7544.0
+        ]
+      ],
+      "pred_truncated": false,
+      "tables": [
+        "orders",
+        "order_items",
+        "order_payments",
+        "customers",
+        "order_reviews",
+        "sellers"
+      ],
+      "example_ids": [
+        "flt-05",
+        "ts-02",
+        "win-04"
+      ],
+      "attempts": 1,
+      "attempt_log": [
+        {
+          "sql": "SELECT count(*) AS orders\nFROM orders\nWHERE order_purchase_timestamp >= '2017-11-01' AND order_purchase_timestamp < '2017-12-01'",
+          "status": "ok",
+          "detail": null
+        }
+      ],
+      "grading": "auto"
+    },
+    {
+      "id": "h02",
+      "question": "What\u2019s our most popular payment method?",
+      "category": "aggregation",
+      "difficulty": "easy",
+      "expected": "answer",
+      "outcome": "answer",
+      "correct": true,
+      "reason": "match",
+      "sql": "SELECT\n    payment_type,\n    COUNT(DISTINCT order_id) AS orders_paid,\n    round(100.0 * COUNT(DISTINCT order_id)\n          / (SELECT COUNT(DISTINCT order_id) FROM order_payments), 2) AS pct_of_orders\nFROM order_payments\nGROUP BY payment_type\nORDER BY orders_paid DESC\nLIMIT 1",
+      "error": null,
+      "error_stage": null,
+      "note": "I measured popularity as the number of distinct orders that used each payment method, across all order statuses. Because some orders are split across several methods, the percentages can add up to more than 100%.",
+      "pred_rows": 1,
+      "gold_rows": 1,
+      "input_tokens": 6303,
+      "output_tokens": 745,
+      "cost_usd": 0.0010028,
+      "latency_ms": 4200.708250049502,
+      "pred_columns": [
+        "payment_type",
+        "orders_paid",
+        "pct_of_orders"
+      ],
+      "pred_data": [
+        [
+          "credit_card",
+          76505.0,
+          76.94
+        ]
+      ],
+      "pred_truncated": false,
+      "tables": [
+        "order_payments",
+        "customers",
+        "order_items",
+        "orders",
+        "sellers",
+        "order_reviews"
+      ],
+      "example_ids": [
+        "flt-09",
+        "agg-11",
+        "win-07"
+      ],
+      "attempts": 1,
+      "attempt_log": [
+        {
+          "sql": "SELECT\n    payment_type,\n    COUNT(DISTINCT order_id) AS orders_paid,\n    round(100.0 * COUNT(DISTINCT order_id)\n          / (SELECT COUNT(DISTINCT order_id) FROM order_payments), 2) AS pct_of_orders\nFROM order_payments\nGROUP BY payment_type\nORDER BY orders_paid DESC\nLIMIT 1",
+          "status": "ok",
+          "detail": null
+        }
+      ],
+      "grading": "auto"
+    },
+    {
+      "id": "h03",
+      "question": "What\u2019s the average review score across all orders?",
+      "category": "aggregation",
+      "difficulty": "easy",
+      "expected": "answer",
+      "outcome": "answer",
+      "correct": true,
+      "reason": "match",
+      "sql": "SELECT round(avg(review_score), 2) AS avg_review_score\nFROM (SELECT DISTINCT review_id, review_score FROM order_reviews) reviews",
+      "error": null,
+      "error_stage": null,
+      "note": "This averages each review_id once, across all order statuses, since the question doesn't add a status filter and review questions include every status.",
+      "pred_rows": 1,
+      "gold_rows": 1,
+      "input_tokens": 6946,
+      "output_tokens": 465,
+      "cost_usd": 0.0009271,
+      "latency_ms": 3020.0068750418723,
+      "pred_columns": [
+        "avg_review_score"
+      ],
+      "pred_data": [
+        [
+          4.09
+        ]
+      ],
+      "pred_truncated": false,
+      "tables": [
+        "order_reviews",
+        "order_items",
+        "orders",
+        "order_payments",
+        "customers",
+        "products"
+      ],
+      "example_ids": [
+        "join-04",
+        "agg-14",
+        "win-10"
+      ],
+      "attempts": 1,
+      "attempt_log": [
+        {
+          "sql": "SELECT round(avg(review_score), 2) AS avg_review_score\nFROM (SELECT DISTINCT review_id, review_score FROM order_reviews) reviews",
+          "status": "ok",
+          "detail": null
+        }
+      ],
+      "grading": "auto"
+    },
+    {
+      "id": "h04",
+      "question": "How many customers do we have in S\u00e3o Paulo state?",
+      "category": "filtering",
+      "difficulty": "easy",
+      "expected": "answer",
+      "outcome": "answer",
+      "correct": true,
+      "reason": "match",
+      "sql": "SELECT count(DISTINCT customer_unique_id) AS sp_customers\nFROM customers\nWHERE customer_state = 'SP'",
+      "error": null,
+      "error_stage": null,
+      "note": "I counted unique people (`customer_unique_id`) rather than order-level `customer_id` values, and included orders of every status since this is a count of customers, not sales.",
+      "pred_rows": 1,
+      "gold_rows": 1,
+      "input_tokens": 6709,
+      "output_tokens": 304,
+      "cost_usd": 0.0008229000000000001,
+      "latency_ms": 2588.5179589968175,
+      "pred_columns": [
+        "sp_customers"
+      ],
+      "pred_data": [
+        [
+          40302.0
+        ]
+      ],
+      "pred_truncated": false,
+      "tables": [
+        "customers",
+        "sellers",
+        "order_payments",
+        "geolocation",
+        "order_items",
+        "order_reviews",
+        "orders"
+      ],
+      "example_ids": [
+        "amb-02",
+        "agg-02",
+        "flt-13"
+      ],
+      "attempts": 1,
+      "attempt_log": [
+        {
+          "sql": "SELECT count(DISTINCT customer_unique_id) AS sp_customers\nFROM customers\nWHERE customer_state = 'SP'",
+          "status": "ok",
+          "detail": null
+        }
+      ],
+      "grading": "auto"
+    },
+    {
+      "id": "h05",
+      "question": "Which 5 product categories brought in the most revenue in 2017?",
+      "category": "joins",
+      "difficulty": "medium",
+      "expected": "answer",
+      "outcome": "answer",
+      "correct": true,
+      "reason": "match",
+      "sql": "SELECT coalesce(p.product_category_name_english, 'unknown') AS category,\n       round(sum(oi.price), 2) AS revenue\nFROM order_items oi\nJOIN orders o ON o.order_id = oi.order_id\nLEFT JOIN products p ON p.product_id = oi.product_id\nWHERE o.order_status NOT IN ('canceled', 'unavailable')\n  AND o.order_purchase_timestamp >= '2017-01-01'\n  AND o.order_purchase_timestamp < '2018-01-01'\nGROUP BY 1\nORDER BY revenue DESC\nLIMIT 5",
+      "error": null,
+      "error_stage": null,
+      "note": "Revenue is item sales (sum of unit price, excluding freight), since the breakdown is by category, and canceled and unavailable orders are excluded.",
+      "pred_rows": 5,
+      "gold_rows": 5,
+      "input_tokens": 6598,
+      "output_tokens": 616,
+      "cost_usd": 0.0009678000000000001,
+      "latency_ms": 2664.4212079700083,
+      "pred_columns": [
+        "category",
+        "revenue"
+      ],
+      "pred_data": [
+        [
+          "bed_bath_table",
+          497970.94
+        ],
+        [
+          "watches_gifts",
+          486519.02
+        ],
+        [
+          "health_beauty",
+          481142.73
+        ],
+        [
+          "sports_leisure",
+          447546.59
+        ],
+        [
+          "computers_accessories",
+          400490.61
+        ]
+      ],
+      "pred_truncated": false,
+      "tables": [
+        "order_items",
+        "order_payments",
+        "products",
+        "customers",
+        "category_translation",
+        "orders"
+      ],
+      "example_ids": [
+        "win-01",
+        "ts-12",
+        "join-01"
+      ],
+      "attempts": 1,
+      "attempt_log": [
+        {
+          "sql": "SELECT coalesce(p.product_category_name_english, 'unknown') AS category,\n       round(sum(oi.price), 2) AS revenue\nFROM order_items oi\nJOIN orders o ON o.order_id = oi.order_id\nLEFT JOIN products p ON p.product_id = oi.product_id\nWHERE o.order_status NOT IN ('canceled', 'unavailable')\n  AND o.order_purchase_timestamp >= '2017-01-01'\n  AND o.order_purchase_timestamp < '2018-01-01'\nGROUP BY 1\nORDER BY revenue DESC\nLIMIT 5",
+          "status": "ok",
+          "detail": null
+        }
+      ],
+      "grading": "auto"
+    },
+    {
+      "id": "h06",
+      "question": "Which states have the highest average order value?",
+      "category": "joins",
+      "difficulty": "medium",
+      "expected": "answer",
+      "outcome": "answer",
+      "correct": false,
+      "reason": "no predicted column matches gold column 'avg_order_value'",
+      "sql": "WITH order_payments_total AS (\n  SELECT order_id, SUM(payment_value) AS paid\n  FROM order_payments\n  GROUP BY order_id\n)\nSELECT c.customer_state AS state,\n       round(SUM(opt.paid) / COUNT(DISTINCT o.order_id), 2) AS avg_order_value,\n       COUNT(DISTINCT o.order_id) AS orders\nFROM orders o\nJOIN customers c ON c.customer_id = o.customer_id\nJOIN order_payments_total opt ON opt.order_id = o.order_id\nWHERE o.order_status NOT IN ('canceled', 'unavailable')\nGROUP BY c.customer_state\nORDER BY avg_order_value DESC",
+      "error": null,
+      "error_stage": null,
+      "note": "I measured order value as total payments per order, excluded canceled and unavailable orders, and grouped by the customer's state. Orders with no payment row are left out, since they have no value to average.",
+      "pred_rows": 27,
+      "gold_rows": 27,
+      "input_tokens": 6394,
+      "output_tokens": 1091,
+      "cost_usd": 0.0011849,
+      "latency_ms": 5112.5171249732375,
+      "pred_columns": [
+        "state",
+        "avg_order_value",
+        "orders"
+      ],
+      "pred_data": [
+        [
+          "PB",
+          264.63,
+          531.0
+        ],
+        [
+          "AC",
+          242.97,
+          81.0
+        ],
+        [
+          "AP",
+          239.16,
+          68.0
+        ],
+        [
+          "AL",
+          234.19,
+          411.0
+        ],
+        [
+          "RO",
+          233.47,
+          246.0
+        ],
+        [
+          "PA",
+          224.44,
+          969.0
+        ],
+        [
+          "RR",
+          221.09,
+          45.0
+        ],
+        [
+          "PI",
+          220.12,
+          490.0
+        ],
+        [
+          "TO",
+          219.8,
+          278.0
+        ],
+        [
+          "SE",
+          211.69,
+          345.0
+        ],
+        [
+          "RN",
+          211.43,
+          482.0
+        ],
+        [
+          "CE",
+          207.52,
+          1323.0
+        ],
+        [
+          "MT",
+          206.46,
+          902.0
+        ],
+        [
+          "MA",
+          204.74,
+          736.0
+        ],
+        [
+          "PE",
+          195.45,
+          1643.0
+        ],
+        [
+          "MS",
+          191.99,
+          708.0
+        ],
+        [
+          "AM",
+          189.43,
+          147.0
+        ],
+        [
+          "BA",
+          181.53,
+          3344.0
+        ],
+        [
+          "GO",
+          170.48,
+          1998.0
+        ],
+        [
+          "SC",
+          168.94,
+          3600.0
+        ],
+        [
+          "RJ",
+          166.64,
+          12698.0
+        ],
+        [
+          "DF",
+          165.72,
+          2121.0
+        ],
+        [
+          "RS",
+          162.05,
+          5417.0
+        ],
+        [
+          "MG",
+          160.36,
+          11496.0
+        ],
+        [
+          "ES",
+          160.11,
+          2018.0
+        ],
+        [
+          "PR",
+          159.47,
+          4983.0
+        ],
+        [
+          "SP",
+          142.95,
+          41126.0
+        ]
+      ],
+      "pred_truncated": false,
+      "tables": [
+        "order_items",
+        "customers",
+        "sellers",
+        "geolocation",
+        "orders",
+        "order_payments"
+      ],
+      "example_ids": [
+        "ts-09",
+        "join-07",
+        "win-14"
+      ],
+      "attempts": 1,
+      "attempt_log": [
+        {
+          "sql": "WITH order_payments_total AS (\n  SELECT order_id, SUM(payment_value) AS paid\n  FROM order_payments\n  GROUP BY order_id\n)\nSELECT c.customer_state AS state,\n       round(SUM(opt.paid) / COUNT(DISTINCT o.order_id), 2) AS avg_order_value,\n       COUNT(DISTINCT o.order_id) AS orders\nFROM orders o\nJOIN customers c ON c.customer_id = o.customer_id\nJOIN order_payments_total opt ON opt.order_id = o.order_id\nWHERE o.order_status NOT IN ('canceled', 'unavailable')\nGROUP BY c.customer_state\nORDER BY avg_order_value DESC",
+          "status": "ok",
+          "detail": null
+        }
+      ],
+      "grading": "manual"
+    },
+    {
+      "id": "h07",
+      "question": "What percentage of delivered orders arrived after the estimated delivery date?",
+      "category": "filtering",
+      "difficulty": "medium",
+      "expected": "answer",
+      "outcome": "answer",
+      "correct": true,
+      "reason": "match",
+      "sql": "SELECT round(\n         100.0 * count(*) FILTER (WHERE order_delivered_customer_date > order_estimated_delivery_date)\n         / count(*),\n       2) AS late_delivery_pct\nFROM orders\nWHERE order_status = 'delivered'\n  AND order_delivered_customer_date IS NOT NULL",
+      "error": null,
+      "error_stage": null,
+      "note": "I used delivered orders with a non-null delivery date as the base, and counted an order as late when its delivery date is after the estimated date.",
+      "pred_rows": 1,
+      "gold_rows": 1,
+      "input_tokens": 6490,
+      "output_tokens": 419,
+      "cost_usd": 0.0008585,
+      "latency_ms": 2259.0062500094064,
+      "pred_columns": [
+        "late_delivery_pct"
+      ],
+      "pred_data": [
+        [
+          8.11
+        ]
+      ],
+      "pred_truncated": false,
+      "tables": [
+        "orders",
+        "order_items",
+        "order_reviews",
+        "order_payments",
+        "customers",
+        "sellers"
+      ],
+      "example_ids": [
+        "agg-21",
+        "join-07",
+        "agg-05"
+      ],
+      "attempts": 1,
+      "attempt_log": [
+        {
+          "sql": "SELECT round(\n         100.0 * count(*) FILTER (WHERE order_delivered_customer_date > order_estimated_delivery_date)\n         / count(*),\n       2) AS late_delivery_pct\nFROM orders\nWHERE order_status = 'delivered'\n  AND order_delivered_customer_date IS NOT NULL",
+          "status": "ok",
+          "detail": null
+        }
+      ],
+      "grading": "auto"
+    },
+    {
+      "id": "h08",
+      "question": "Who are our top 10 sellers by number of orders, and what are their average review scores?",
+      "category": "joins",
+      "difficulty": "medium",
+      "expected": "answer",
+      "outcome": "answer",
+      "correct": true,
+      "reason": "match",
+      "sql": "WITH seller_orders AS (\n  SELECT DISTINCT seller_id, order_id\n  FROM order_items\n),\nseller_counts AS (\n  SELECT seller_id, count(*) AS order_count\n  FROM seller_orders\n  GROUP BY seller_id\n),\nseller_scores AS (\n  SELECT so.seller_id, avg(r.review_score) AS avg_score\n  FROM seller_orders so\n  JOIN order_reviews r ON r.order_id = so.order_id\n  GROUP BY so.seller_id\n)\nSELECT sc.seller_id,\n       sc.order_count,\n       round(ss.avg_score, 2) AS avg_review_score\nFROM seller_counts sc\nLEFT JOIN seller_scores ss ON ss.seller_id = sc.seller_id\nORDER BY sc.order_count DESC, sc.seller_id\nLIMIT 10",
+      "error": null,
+      "error_stage": null,
+      "note": "I counted an order for a seller if it contains at least one of that seller's items, and included all order statuses since the question doesn't mention sales or revenue. Review averages use the review rows for those orders, and sellers with no reviews show NULL.",
+      "pred_rows": 10,
+      "gold_rows": 10,
+      "input_tokens": 6413,
+      "output_tokens": 1041,
+      "cost_usd": 0.0011618000000000002,
+      "latency_ms": 4892.229499993846,
+      "pred_columns": [
+        "seller_id",
+        "order_count",
+        "avg_review_score"
+      ],
+      "pred_data": [
+        [
+          "6560211a19b47992c3666cc44a7e94c0",
+          1854.0,
+          3.94
+        ],
+        [
+          "4a3ca9315b744ce9f8e9374361493884",
+          1806.0,
+          3.83
+        ],
+        [
+          "cc419e0650a3c5ba77189a1882b7556a",
+          1706.0,
+          4.08
+        ],
+        [
+          "1f50f920176fa81dab994f9023523100",
+          1404.0,
+          4.13
+        ],
+        [
+          "da8622b14eb17ae2831f4ac5b9dab84a",
+          1314.0,
+          4.18
+        ],
+        [
+          "955fee9216a65b617aa5c0531780ce60",
+          1287.0,
+          4.16
+        ],
+        [
+          "7a67c85e85bb2ce8582c35f2203ad736",
+          1160.0,
+          4.24
+        ],
+        [
+          "ea8482cd71df3c1969d7b9473ff13abc",
+          1146.0,
+          4.0
+        ],
+        [
+          "4869f7a5dfa277a7dca6462dcf3b52b2",
+          1132.0,
+          4.13
+        ],
+        [
+          "3d871de0142ce09b7081e2b9d1733cb1",
+          1080.0,
+          4.15
+        ]
+      ],
+      "pred_truncated": false,
+      "tables": [
+        "order_reviews",
+        "order_items",
+        "orders",
+        "customers",
+        "order_payments",
+        "sellers"
+      ],
+      "example_ids": [
+        "join-04",
+        "agg-08",
+        "agg-05"
+      ],
+      "attempts": 1,
+      "attempt_log": [
+        {
+          "sql": "WITH seller_orders AS (\n  SELECT DISTINCT seller_id, order_id\n  FROM order_items\n),\nseller_counts AS (\n  SELECT seller_id, count(*) AS order_count\n  FROM seller_orders\n  GROUP BY seller_id\n),\nseller_scores AS (\n  SELECT so.seller_id, avg(r.review_score) AS avg_score\n  FROM seller_orders so\n  JOIN order_reviews r ON r.order_id = so.order_id\n  GROUP BY so.seller_id\n)\nSELECT sc.seller_id,\n       sc.order_count,\n       round(ss.avg_score, 2) AS avg_review_score\nFROM seller_counts sc\nLEFT JOIN seller_scores ss ON ss.seller_id = sc.seller_id\nORDER BY sc.order_count DESC, sc.seller_id\nLIMIT 10",
+          "status": "ok",
+          "detail": null
+        }
+      ],
+      "grading": "auto"
+    },
+    {
+      "id": "h09",
+      "question": "How long does it take on average from purchase to delivery, by state?",
+      "category": "joins",
+      "difficulty": "medium",
+      "expected": "answer",
+      "outcome": "answer",
+      "correct": true,
+      "reason": "match",
+      "sql": "SELECT c.customer_state AS state,\n       round(avg(extract(epoch FROM o.order_delivered_customer_date - o.order_purchase_timestamp) / 86400)::numeric, 2) AS avg_delivery_days\nFROM orders o\nJOIN customers c ON c.customer_id = o.customer_id\nWHERE o.order_status = 'delivered'\n  AND o.order_delivered_customer_date IS NOT NULL\nGROUP BY c.customer_state\nORDER BY avg_delivery_days DESC",
+      "error": null,
+      "error_stage": null,
+      "note": "I used the customer's state (`customers.customer_state`) since the question concerns where orders are delivered, and restricted to delivered orders with a delivery date, per the delivery-time rule.",
+      "pred_rows": 27,
+      "gold_rows": 27,
+      "input_tokens": 6713,
+      "output_tokens": 324,
+      "cost_usd": 0.0008333,
+      "latency_ms": 1847.5671249907464,
+      "pred_columns": [
+        "state",
+        "avg_delivery_days"
+      ],
+      "pred_data": [
+        [
+          "RR",
+          29.39
+        ],
+        [
+          "AP",
+          27.19
+        ],
+        [
+          "AM",
+          26.43
+        ],
+        [
+          "AL",
+          24.54
+        ],
+        [
+          "PA",
+          23.77
+        ],
+        [
+          "MA",
+          21.57
+        ],
+        [
+          "SE",
+          21.52
+        ],
+        [
+          "CE",
+          21.27
+        ],
+        [
+          "AC",
+          21.04
+        ],
+        [
+          "PB",
+          20.43
+        ],
+        [
+          "PI",
+          19.46
+        ],
+        [
+          "RO",
+          19.37
+        ],
+        [
+          "BA",
+          19.34
+        ],
+        [
+          "RN",
+          19.28
+        ],
+        [
+          "PE",
+          18.45
+        ],
+        [
+          "MT",
+          18.06
+        ],
+        [
+          "TO",
+          17.66
+        ],
+        [
+          "ES",
+          15.79
+        ],
+        [
+          "MS",
+          15.62
+        ],
+        [
+          "GO",
+          15.61
+        ],
+        [
+          "RJ",
+          15.31
+        ],
+        [
+          "RS",
+          15.3
+        ],
+        [
+          "SC",
+          14.95
+        ],
+        [
+          "DF",
+          12.97
+        ],
+        [
+          "MG",
+          12.01
+        ],
+        [
+          "PR",
+          11.99
+        ],
+        [
+          "SP",
+          8.76
+        ]
+      ],
+      "pred_truncated": false,
+      "tables": [
+        "orders",
+        "order_items",
+        "customers",
+        "sellers",
+        "order_payments",
+        "order_reviews"
+      ],
+      "example_ids": [
+        "join-07",
+        "agg-21",
+        "join-22"
+      ],
+      "attempts": 1,
+      "attempt_log": [
+        {
+          "sql": "SELECT c.customer_state AS state,\n       round(avg(extract(epoch FROM o.order_delivered_customer_date - o.order_purchase_timestamp) / 86400)::numeric, 2) AS avg_delivery_days\nFROM orders o\nJOIN customers c ON c.customer_id = o.customer_id\nWHERE o.order_status = 'delivered'\n  AND o.order_delivered_customer_date IS NOT NULL\nGROUP BY c.customer_state\nORDER BY avg_delivery_days DESC",
+          "status": "ok",
+          "detail": null
+        }
+      ],
+      "grading": "auto"
+    },
+    {
+      "id": "h10",
+      "question": "Do customers who pay in more installments spend more per order?",
+      "category": "aggregation",
+      "difficulty": "medium",
+      "expected": "answer",
+      "outcome": "answer",
+      "correct": false,
+      "reason": "row count 5 != gold 24",
+      "sql": "WITH order_pay AS (\n  SELECT order_id,\n         SUM(payment_value) AS paid,\n         MAX(payment_installments) FILTER (WHERE payment_installments >= 1) AS max_inst\n  FROM order_payments\n  GROUP BY order_id\n),\nsales AS (\n  SELECT o.order_id, p.paid, p.max_inst\n  FROM orders o\n  JOIN order_pay p ON p.order_id = o.order_id\n  WHERE o.order_status NOT IN ('canceled', 'unavailable')\n    AND p.max_inst IS NOT NULL\n),\nbucketed AS (\n  SELECT order_id, paid, max_inst,\n         CASE WHEN max_inst = 1 THEN '1 (paid at once)'\n              WHEN max_inst <= 3 THEN '2-3'\n              WHEN max_inst <= 6 THEN '4-6'\n              WHEN max_inst <= 10 THEN '7-10'\n              ELSE '11+'\n         END AS installment_bucket,\n         CASE WHEN max_inst = 1 THEN 1\n              WHEN max_inst <= 3 THEN 2\n              WHEN max_inst <= 6 THEN 3\n              WHEN max_inst <= 10 THEN 4\n              ELSE 5\n         END AS sort_key\n  FROM sales\n)\nSELECT installment_bucket,\n       COUNT(*) AS orders,\n       ROUND(AVG(paid), 2) AS avg_spend_per_order\nFROM bucketed\nGROUP BY installment_bucket, sort_key\nORDER BY sort_key",
+      "error": null,
+      "error_stage": null,
+      "note": "I measured spend per order as total payments (`payment_value`, including freight and any card interest), using each order's highest installment count. Canceled and unavailable orders are excluded. Orders with an installment count of 0 are ignored when picking that maximum.",
+      "pred_rows": 5,
+      "gold_rows": 24,
+      "input_tokens": 6622,
+      "output_tokens": 2039,
+      "cost_usd": 0.0016817,
+      "latency_ms": 8877.8960420168,
+      "pred_columns": [
+        "installment_bucket",
+        "orders",
+        "avg_spend_per_order"
+      ],
+      "pred_data": [
+        [
+          "1 (paid at once)",
+          47615.0,
+          120.46
+        ],
+        [
+          "2-3",
+          22549.0,
+          135.68
+        ],
+        [
+          "4-6",
+          16022.0,
+          182.23
+        ],
+        [
+          "7-10",
+          11682.0,
+          334.04
+        ],
+        [
+          "11+",
+          336.0,
+          362.25
+        ]
+      ],
+      "pred_truncated": false,
+      "tables": [
+        "order_payments",
+        "customers",
+        "order_items",
+        "orders",
+        "order_reviews",
+        "sellers"
+      ],
+      "example_ids": [
+        "flt-13",
+        "flt-09",
+        "win-10"
+      ],
+      "attempts": 1,
+      "attempt_log": [
+        {
+          "sql": "WITH order_pay AS (\n  SELECT order_id,\n         SUM(payment_value) AS paid,\n         MAX(payment_installments) FILTER (WHERE payment_installments >= 1) AS max_inst\n  FROM order_payments\n  GROUP BY order_id\n),\nsales AS (\n  SELECT o.order_id, p.paid, p.max_inst\n  FROM orders o\n  JOIN order_pay p ON p.order_id = o.order_id\n  WHERE o.order_status NOT IN ('canceled', 'unavailable')\n    AND p.max_inst IS NOT NULL\n),\nbucketed AS (\n  SELECT order_id, paid, max_inst,\n         CASE WHEN max_inst = 1 THEN '1 (paid at once)'\n              WHEN max_inst <= 3 THEN '2-3'\n              WHEN max_inst <= 6 THEN '4-6'\n              WHEN max_inst <= 10 THEN '7-10'\n              ELSE '11+'\n         END AS installment_bucket,\n         CASE WHEN max_inst = 1 THEN 1\n              WHEN max_inst <= 3 THEN 2\n              WHEN max_inst <= 6 THEN 3\n              WHEN max_inst <= 10 THEN 4\n              ELSE 5\n         END AS sort_key\n  FROM sales\n)\nSELECT installment_bucket,\n       COUNT(*) AS orders,\n       ROUND(AVG(paid), 2) AS avg_spend_per_order\nFROM bucketed\nGROUP BY installment_bucket, sort_key\nORDER BY sort_key",
+          "status": "ok",
+          "detail": null
+        }
+      ],
+      "grading": "manual"
+    },
+    {
+      "id": "h11",
+      "question": "Which product categories get the most 1-star reviews as a share of their orders?",
+      "category": "window_functions",
+      "difficulty": "medium",
+      "expected": "answer",
+      "outcome": "answer",
+      "correct": true,
+      "reason": "match",
+      "sql": "WITH order_categories AS (\n  SELECT DISTINCT oi.order_id,\n         coalesce(p.product_category_name_english, 'unknown') AS category\n  FROM order_items oi\n  JOIN products p ON p.product_id = oi.product_id\n),\none_star_orders AS (\n  SELECT DISTINCT order_id\n  FROM order_reviews\n  WHERE review_score = 1\n)\nSELECT oc.category,\n       count(*) AS orders,\n       count(*) FILTER (WHERE os.order_id IS NOT NULL) AS one_star_orders,\n       round(100.0 * count(*) FILTER (WHERE os.order_id IS NOT NULL) / count(*), 2) AS one_star_share_pct\nFROM order_categories oc\nLEFT JOIN one_star_orders os ON os.order_id = oc.order_id\nGROUP BY oc.category\nORDER BY one_star_share_pct DESC",
+      "error": null,
+      "error_stage": null,
+      "note": "I counted each order once per category, using all order statuses in the denominator. An order counts as one-star if it has at least one review with score 1. Orders with no review therefore count as not one-star, so categories with many undelivered orders will look lower. Small categories can show extreme shares, so check the order counts before drawing conclusions.",
+      "pred_rows": 74,
+      "gold_rows": 74,
+      "input_tokens": 6782,
+      "output_tokens": 1389,
+      "cost_usd": 0.0013727000000000001,
+      "latency_ms": 7342.021542019211,
+      "pred_columns": [
+        "category",
+        "orders",
+        "one_star_orders",
+        "one_star_share_pct"
+      ],
+      "pred_data": [
+        [
+          "security_and_services",
+          2.0,
+          1.0,
+          50.0
+        ],
+        [
+          "pc_gamer",
+          8.0,
+          3.0,
+          37.5
+        ],
+        [
+          "fashion_male_clothing",
+          112.0,
+          26.0,
+          23.21
+        ],
+        [
+          "diapers_and_hygiene",
+          27.0,
+          5.0,
+          18.52
+        ],
+        [
+          "furniture_mattress_and_upholstery",
+          38.0,
+          7.0,
+          18.42
+        ],
+        [
+          "construction_tools_safety",
+          167.0,
+          30.0,
+          17.96
+        ],
+        [
+          "office_furniture",
+          1273.0,
+          227.0,
+          17.83
+        ],
+        [
+          "home_comfort_2",
+          24.0,
+          4.0,
+          16.67
+        ],
+        [
+          "audio",
+          350.0,
+          58.0,
+          16.57
+        ],
+        [
+          "unknown",
+          1451.0,
+          237.0,
+          16.33
+        ],
+        [
+          "fashio_female_clothing",
+          39.0,
+          6.0,
+          15.38
+        ],
+        [
+          "la_cuisine",
+          13.0,
+          2.0,
+          15.38
+        ],
+        [
+          "home_confort",
+          397.0,
+          61.0,
+          15.37
+        ],
+        [
+          "dvds_blu_ray",
+          59.0,
+          9.0,
+          15.25
+        ],
+        [
+          "fixed_telephony",
+          217.0,
+          33.0,
+          15.21
+        ],
+        [
+          "portable_kitchen_and_food_preparers",
+          14.0,
+          2.0,
+          14.29
+        ],
+        [
+          "air_conditioning",
+          253.0,
+          34.0,
+          13.44
+        ],
+        [
+          "arts_and_craftmanship",
+          23.0,
+          3.0,
+          13.04
+        ],
+        [
+          "furniture_decor",
+          6449.0,
+          828.0,
+          12.84
+        ],
+        [
+          "party_supplies",
+          39.0,
+          5.0,
+          12.82
+        ],
+        [
+          "computers_accessories",
+          6689.0,
+          850.0,
+          12.71
+        ],
+        [
+          "bed_bath_table",
+          9417.0,
+          1191.0,
+          12.65
+        ],
+        [
+          "furniture_bedroom",
+          95.0,
+          12.0,
+          12.63
+        ],
+        [
+          "fashion_childrens_clothes",
+          8.0,
+          1.0,
+          12.5
+        ],
+        [
+          "baby",
+          2885.0,
+          360.0,
+          12.48
+        ],
+        [
+          "art",
+          202.0,
+          25.0,
+          12.38
+        ],
+        [
+          "construction_tools_construction",
+          748.0,
+          89.0,
+          11.9
+        ],
+        [
+          "kitchen_dining_laundry_garden_furniture",
+          248.0,
+          29.0,
+          11.69
+        ],
+        [
+          "watches_gifts",
+          5624.0,
+          655.0,
+          11.65
+        ],
+        [
+          "computers",
+          181.0,
+          21.0,
+          11.6
+        ],
+        [
+          "fashion_underwear_beach",
+          121.0,
+          14.0,
+          11.57
+        ],
+        [
+          "telephony",
+          4199.0,
+          486.0,
+          11.57
+        ],
+        [
+          "agro_industry_and_commerce",
+          182.0,
+          21.0,
+          11.54
+        ],
+        [
+          "home_construction",
+          490.0,
+          56.0,
+          11.43
+        ],
+        [
+          "books_imported",
+          53.0,
+          6.0,
+          11.32
+        ],
+        [
+          "consoles_games",
+          1062.0,
+          120.0,
+          11.3
+        ],
+        [
+          "auto",
+          3897.0,
+          437.0,
+          11.21
+        ],
+        [
+          "market_place",
+          280.0,
+          31.0,
+          11.07
+        ],
+        [
+          "christmas_supplies",
+          128.0,
+          14.0,
+          10.94
+        ],
+        [
+          "drinks",
+          297.0,
+          32.0,
+          10.77
+        ],
+        [
+          "cine_photo",
+          65.0,
+          7.0,
+          10.77
+        ],
+        [
+          "small_appliances",
+          630.0,
+          67.0,
+          10.63
+        ],
+        [
+          "electronics",
+          2550.0,
+          271.0,
+          10.63
+        ],
+        [
+          "music",
+          38.0,
+          4.0,
+          10.53
+        ],
+        [
+          "home_appliances",
+          764.0,
+          80.0,
+          10.47
+        ],
+        [
+          "sports_leisure",
+          7720.0,
+          806.0,
+          10.44
+        ],
+        [
+          "furniture_living_room",
+          422.0,
+          44.0,
+          10.43
+        ],
+        [
+          "garden_tools",
+          3518.0,
+          366.0,
+          10.4
+        ],
+        [
+          "perfumery",
+          3162.0,
+          328.0,
+          10.37
+        ],
+        [
+          "costruction_tools_garden",
+          194.0,
+          20.0,
+          10.31
+        ],
+        [
+          "health_beauty",
+          8836.0,
+          898.0,
+          10.16
+        ],
+        [
+          "toys",
+          3886.0,
+          393.0,
+          10.11
+        ],
+        [
+          "housewares",
+          5884.0,
+          589.0,
+          10.01
+        ],
+        [
+          "signaling_and_security",
+          140.0,
+          14.0,
+          10.0
+        ],
+        [
+          "musical_instruments",
+          628.0,
+          60.0,
+          9.55
+        ],
+        [
+          "cool_stuff",
+          3632.0,
+          340.0,
+          9.36
+        ],
+        [
+          "small_appliances_home_oven_and_coffee",
+          75.0,
+          7.0,
+          9.33
+        ],
+        [
+          "food",
+          450.0,
+          41.0,
+          9.11
+        ],
+        [
+          "fashion_bags_accessories",
+          1864.0,
+          169.0,
+          9.07
+        ],
+        [
+          "home_appliances_2",
+          234.0,
+          21.0,
+          8.97
+        ],
+        [
+          "industry_commerce_and_business",
+          235.0,
+          21.0,
+          8.94
+        ],
+        [
+          "pet_shop",
+          1710.0,
+          152.0,
+          8.89
+        ],
+        [
+          "fashion_shoes",
+          240.0,
+          21.0,
+          8.75
+        ],
+        [
+          "stationery",
+          2311.0,
+          197.0,
+          8.52
+        ],
+        [
+          "costruction_tools_tools",
+          97.0,
+          8.0,
+          8.25
+        ],
+        [
+          "construction_tools_lights",
+          244.0,
+          19.0,
+          7.79
+        ],
+        [
+          "fashion_sport",
+          27.0,
+          2.0,
+          7.41
+        ],
+        [
+          "books_technical",
+          260.0,
+          19.0,
+          7.31
+        ],
+        [
+          "books_general_interest",
+          512.0,
+          36.0,
+          7.03
+        ],
+        [
+          "flowers",
+          29.0,
+          2.0,
+          6.9
+        ],
+        [
+          "luggage_accessories",
+          1034.0,
+          70.0,
+          6.77
+        ],
+        [
+          "tablets_printing_image",
+          79.0,
+          4.0,
+          5.06
+        ],
+        [
+          "food_drink",
+          227.0,
+          10.0,
+          4.41
+        ],
+        [
+          "cds_dvds_musicals",
+          12.0,
+          0.0,
+          0.0
+        ]
+      ],
+      "pred_truncated": false,
+      "tables": [
+        "order_reviews",
+        "order_items",
+        "orders",
+        "products",
+        "customers",
+        "order_payments"
+      ],
+      "example_ids": [
+        "join-04",
+        "join-15",
+        "join-01"
+      ],
+      "attempts": 1,
+      "attempt_log": [
+        {
+          "sql": "WITH order_categories AS (\n  SELECT DISTINCT oi.order_id,\n         coalesce(p.product_category_name_english, 'unknown') AS category\n  FROM order_items oi\n  JOIN products p ON p.product_id = oi.product_id\n),\none_star_orders AS (\n  SELECT DISTINCT order_id\n  FROM order_reviews\n  WHERE review_score = 1\n)\nSELECT oc.category,\n       count(*) AS orders,\n       count(*) FILTER (WHERE os.order_id IS NOT NULL) AS one_star_orders,\n       round(100.0 * count(*) FILTER (WHERE os.order_id IS NOT NULL) / count(*), 2) AS one_star_share_pct\nFROM order_categories oc\nLEFT JOIN one_star_orders os ON os.order_id = oc.order_id\nGROUP BY oc.category\nORDER BY one_star_share_pct DESC",
+          "status": "ok",
+          "detail": null
+        }
+      ],
+      "grading": "manual"
+    },
+    {
+      "id": "h12",
+      "question": "How did monthly revenue trend in 2018 compared to the same months in 2017?",
+      "category": "time_series",
+      "difficulty": "hard",
+      "expected": "answer",
+      "outcome": "answer",
+      "correct": false,
+      "reason": "row count 8 != gold 12",
+      "sql": "WITH monthly AS (\n  SELECT date_trunc('month', o.order_purchase_timestamp)::date AS month_start,\n         sum(p.payment_value) AS revenue\n  FROM orders o\n  JOIN order_payments p ON p.order_id = o.order_id\n  WHERE o.order_status NOT IN ('canceled', 'unavailable')\n    AND o.order_purchase_timestamp >= '2017-01-01'\n    AND o.order_purchase_timestamp < '2018-09-01'\n  GROUP BY 1\n),\npivoted AS (\n  SELECT extract(month FROM month_start)::int AS month_num,\n         sum(CASE WHEN extract(year FROM month_start) = 2017 THEN revenue END) AS rev_2017,\n         sum(CASE WHEN extract(year FROM month_start) = 2018 THEN revenue END) AS rev_2018\n  FROM monthly\n  WHERE extract(month FROM month_start) <= 8\n  GROUP BY 1\n)\nSELECT month_num,\n       round(rev_2017, 2) AS revenue_2017,\n       round(rev_2018, 2) AS revenue_2018,\n       round(100.0 * (rev_2018 - rev_2017) / nullif(rev_2017, 0), 2) AS yoy_growth_pct\nFROM pivoted\nORDER BY month_num",
+      "error": null,
+      "error_stage": null,
+      "note": "Revenue is taken as payment value (excluding canceled and unavailable orders), and the comparison covers January to August, since 2018-09 and later are incomplete in the data.",
+      "pred_rows": 8,
+      "gold_rows": 12,
+      "input_tokens": 6658,
+      "output_tokens": 2038,
+      "cost_usd": 0.0016848000000000002,
+      "latency_ms": 8473.238167003728,
+      "pred_columns": [
+        "month_num",
+        "revenue_2017",
+        "revenue_2018",
+        "yoy_growth_pct"
+      ],
+      "pred_data": [
+        [
+          1.0,
+          137006.76,
+          1102639.41,
+          704.81
+        ],
+        [
+          2.0,
+          283621.94,
+          979966.23,
+          245.52
+        ],
+        [
+          3.0,
+          425656.4,
+          1152736.74,
+          170.81
+        ],
+        [
+          4.0,
+          405988.38,
+          1156303.91,
+          184.81
+        ],
+        [
+          5.0,
+          582926.16,
+          1145748.63,
+          96.55
+        ],
+        [
+          6.0,
+          499827.47,
+          1020494.29,
+          104.17
+        ],
+        [
+          7.0,
+          578858.58,
+          1039880.16,
+          79.64
+        ],
+        [
+          8.0,
+          662071.77,
+          996896.15,
+          50.57
+        ]
+      ],
+      "pred_truncated": false,
+      "tables": [
+        "orders",
+        "order_payments",
+        "order_items",
+        "customers",
+        "order_reviews",
+        "sellers"
+      ],
+      "example_ids": [
+        "ts-12",
+        "ts-03",
+        "win-04"
+      ],
+      "attempts": 1,
+      "attempt_log": [
+        {
+          "sql": "WITH monthly AS (\n  SELECT date_trunc('month', o.order_purchase_timestamp)::date AS month_start,\n         sum(p.payment_value) AS revenue\n  FROM orders o\n  JOIN order_payments p ON p.order_id = o.order_id\n  WHERE o.order_status NOT IN ('canceled', 'unavailable')\n    AND o.order_purchase_timestamp >= '2017-01-01'\n    AND o.order_purchase_timestamp < '2018-09-01'\n  GROUP BY 1\n),\npivoted AS (\n  SELECT extract(month FROM month_start)::int AS month_num,\n         sum(CASE WHEN extract(year FROM month_start) = 2017 THEN revenue END) AS rev_2017,\n         sum(CASE WHEN extract(year FROM month_start) = 2018 THEN revenue END) AS rev_2018\n  FROM monthly\n  WHERE extract(month FROM month_start) <= 8\n  GROUP BY 1\n)\nSELECT month_num,\n       round(rev_2017, 2) AS revenue_2017,\n       round(rev_2018, 2) AS revenue_2018,\n       round(100.0 * (rev_2018 - rev_2017) / nullif(rev_2017, 0), 2) AS yoy_growth_pct\nFROM pivoted\nORDER BY month_num",
+          "status": "ok",
+          "detail": null
+        }
+      ],
+      "grading": "manual"
+    },
+    {
+      "id": "h13",
+      "question": "What share of customers ordered more than once?",
+      "category": "aggregation",
+      "difficulty": "hard",
+      "expected": "answer",
+      "outcome": "answer",
+      "correct": true,
+      "reason": "match",
+      "sql": "WITH orders_per_person AS (\n  SELECT c.customer_unique_id,\n         count(o.order_id) AS orders_placed\n  FROM customers c\n  JOIN orders o ON o.customer_id = c.customer_id\n  GROUP BY c.customer_unique_id\n)\nSELECT count(*) FILTER (WHERE orders_placed > 1) AS repeat_customers,\n       count(*) AS total_customers,\n       round(100.0 * count(*) FILTER (WHERE orders_placed > 1) / count(*), 2) AS repeat_customer_share_pct\nFROM orders_per_person",
+      "error": null,
+      "error_stage": null,
+      "note": "I counted people by `customer_unique_id` and included all order statuses, since \"ordered\" is a count question and the status exclusion applies only to revenue, sales, and items sold or bought.",
+      "pred_rows": 1,
+      "gold_rows": 1,
+      "input_tokens": 6479,
+      "output_tokens": 680,
+      "cost_usd": 0.0009879,
+      "latency_ms": 3371.8031250173226,
+      "pred_columns": [
+        "repeat_customers",
+        "total_customers",
+        "repeat_customer_share_pct"
+      ],
+      "pred_data": [
+        [
+          2997.0,
+          96096.0,
+          3.12
+        ]
+      ],
+      "pred_truncated": false,
+      "tables": [
+        "customers",
+        "orders",
+        "order_items",
+        "order_payments",
+        "order_reviews",
+        "sellers"
+      ],
+      "example_ids": [
+        "flt-13",
+        "agg-02",
+        "flt-18"
+      ],
+      "attempts": 1,
+      "attempt_log": [
+        {
+          "sql": "WITH orders_per_person AS (\n  SELECT c.customer_unique_id,\n         count(o.order_id) AS orders_placed\n  FROM customers c\n  JOIN orders o ON o.customer_id = c.customer_id\n  GROUP BY c.customer_unique_id\n)\nSELECT count(*) FILTER (WHERE orders_placed > 1) AS repeat_customers,\n       count(*) AS total_customers,\n       round(100.0 * count(*) FILTER (WHERE orders_placed > 1) / count(*), 2) AS repeat_customer_share_pct\nFROM orders_per_person",
+          "status": "ok",
+          "detail": null
+        }
+      ],
+      "grading": "auto"
+    },
+    {
+      "id": "h14",
+      "question": "Are late deliveries hurting our review scores? Compare on-time vs. late orders.",
+      "category": "joins",
+      "difficulty": "hard",
+      "expected": "answer",
+      "outcome": "answer",
+      "correct": false,
+      "reason": "no predicted column matches gold column 'late'",
+      "sql": "WITH delivered AS (\n  SELECT order_id,\n         CASE WHEN order_delivered_customer_date > order_estimated_delivery_date\n              THEN 'late' ELSE 'on time' END AS delivery_status\n  FROM orders\n  WHERE order_status = 'delivered' AND order_delivered_customer_date IS NOT NULL\n),\nreviews_once AS (\n  SELECT DISTINCT d.delivery_status, r.review_id, r.review_score\n  FROM delivered d\n  JOIN order_reviews r ON r.order_id = d.order_id\n)\nSELECT delivery_status,\n       count(*) AS review_count,\n       round(avg(review_score), 2) AS avg_review_score,\n       round(100.0 * avg(CASE WHEN review_score <= 2 THEN 1 ELSE 0 END), 2) AS low_score_pct\nFROM reviews_once\nGROUP BY delivery_status\nORDER BY delivery_status",
+      "error": null,
+      "error_stage": null,
+      "note": "I compared delivered orders with a delivery date, splitting them into late (delivered after the estimated date) and on time, and counted each review_id once per delivery group. Low scores are defined as 1 or 2 stars. This shows association only, not proof that lateness causes lower scores.",
+      "pred_rows": 2,
+      "gold_rows": 2,
+      "input_tokens": 6626,
+      "output_tokens": 1221,
+      "cost_usd": 0.0012730999999999999,
+      "latency_ms": 5555.938334029634,
+      "pred_columns": [
+        "delivery_status",
+        "review_count",
+        "avg_review_score",
+        "low_score_pct"
+      ],
+      "pred_data": [
+        [
+          "late",
+          7674.0,
+          2.57,
+          53.99
+        ],
+        [
+          "on time",
+          88030.0,
+          4.29,
+          9.21
+        ]
+      ],
+      "pred_truncated": false,
+      "tables": [
+        "orders",
+        "order_reviews",
+        "order_items",
+        "customers",
+        "order_payments",
+        "sellers"
+      ],
+      "example_ids": [
+        "agg-21",
+        "join-07",
+        "join-04"
+      ],
+      "attempts": 1,
+      "attempt_log": [
+        {
+          "sql": "WITH delivered AS (\n  SELECT order_id,\n         CASE WHEN order_delivered_customer_date > order_estimated_delivery_date\n              THEN 'late' ELSE 'on time' END AS delivery_status\n  FROM orders\n  WHERE order_status = 'delivered' AND order_delivered_customer_date IS NOT NULL\n),\nreviews_once AS (\n  SELECT DISTINCT d.delivery_status, r.review_id, r.review_score\n  FROM delivered d\n  JOIN order_reviews r ON r.order_id = d.order_id\n)\nSELECT delivery_status,\n       count(*) AS review_count,\n       round(avg(review_score), 2) AS avg_review_score,\n       round(100.0 * avg(CASE WHEN review_score <= 2 THEN 1 ELSE 0 END), 2) AS low_score_pct\nFROM reviews_once\nGROUP BY delivery_status\nORDER BY delivery_status",
+          "status": "ok",
+          "detail": null
+        }
+      ],
+      "grading": "manual"
+    },
+    {
+      "id": "h15",
+      "question": "For each of the top 3 categories by revenue, which month in 2018 was their best?",
+      "category": "window_functions",
+      "difficulty": "hard",
+      "expected": "answer",
+      "outcome": "answer",
+      "correct": true,
+      "reason": "match",
+      "sql": "WITH cat_rev AS (\n  SELECT coalesce(p.product_category_name_english, 'unknown') AS category,\n         sum(oi.price) AS revenue\n  FROM order_items oi\n  JOIN orders o ON o.order_id = oi.order_id\n  JOIN products p ON p.product_id = oi.product_id\n  WHERE o.order_status NOT IN ('canceled', 'unavailable')\n  GROUP BY 1\n),\ntop3 AS (\n  SELECT category, revenue\n  FROM cat_rev\n  ORDER BY revenue DESC\n  LIMIT 3\n),\nmonthly AS (\n  SELECT coalesce(p.product_category_name_english, 'unknown') AS category,\n         date_trunc('month', o.order_purchase_timestamp)::date AS month,\n         sum(oi.price) AS revenue\n  FROM order_items oi\n  JOIN orders o ON o.order_id = oi.order_id\n  JOIN products p ON p.product_id = oi.product_id\n  WHERE o.order_status NOT IN ('canceled', 'unavailable')\n    AND o.order_purchase_timestamp >= '2018-01-01'\n    AND o.order_purchase_timestamp < '2018-09-01'\n  GROUP BY 1, 2\n),\nranked AS (\n  SELECT m.category,\n         m.month,\n         m.revenue,\n         t.revenue AS total_revenue,\n         rank() OVER (PARTITION BY m.category ORDER BY m.revenue DESC) AS rk\n  FROM monthly m\n  JOIN top3 t ON t.category = m.category\n)\nSELECT category,\n       month AS best_month_2018,\n       round(revenue, 2) AS best_month_revenue,\n       round(total_revenue, 2) AS total_revenue_all_periods\nFROM ranked\nWHERE rk = 1\nORDER BY total_revenue DESC",
+      "error": null,
+      "error_stage": null,
+      "note": "Assumptions: \"top 3\" is ranked on item sales (SUM of `price`, excluding canceled and unavailable orders) across all periods. The best month is searched only within Jan to Aug 2018, because Sep and Oct 2018 are incomplete in the data.",
+      "pred_rows": 3,
+      "gold_rows": 3,
+      "input_tokens": 7014,
+      "output_tokens": 1878,
+      "cost_usd": 0.0016404000000000002,
+      "latency_ms": 8197.522583999671,
+      "pred_columns": [
+        "category",
+        "best_month_2018",
+        "best_month_revenue",
+        "total_revenue_all_periods"
+      ],
+      "pred_data": [
+        [
+          "health_beauty",
+          "2018-08-01",
+          120475.71,
+          1255695.13
+        ],
+        [
+          "watches_gifts",
+          "2018-05-01",
+          123872.66,
+          1198185.21
+        ],
+        [
+          "bed_bath_table",
+          "2018-01-01",
+          76281.9,
+          1035964.06
+        ]
+      ],
+      "pred_truncated": false,
+      "tables": [
+        "orders",
+        "order_payments",
+        "order_reviews",
+        "order_items",
+        "customers",
+        "products"
+      ],
+      "example_ids": [
+        "win-01",
+        "ts-03",
+        "ts-12"
+      ],
+      "attempts": 1,
+      "attempt_log": [
+        {
+          "sql": "WITH cat_rev AS (\n  SELECT coalesce(p.product_category_name_english, 'unknown') AS category,\n         sum(oi.price) AS revenue\n  FROM order_items oi\n  JOIN orders o ON o.order_id = oi.order_id\n  JOIN products p ON p.product_id = oi.product_id\n  WHERE o.order_status NOT IN ('canceled', 'unavailable')\n  GROUP BY 1\n),\ntop3 AS (\n  SELECT category, revenue\n  FROM cat_rev\n  ORDER BY revenue DESC\n  LIMIT 3\n),\nmonthly AS (\n  SELECT coalesce(p.product_category_name_english, 'unknown') AS category,\n         date_trunc('month', o.order_purchase_timestamp)::date AS month,\n         sum(oi.price) AS revenue\n  FROM order_items oi\n  JOIN orders o ON o.order_id = oi.order_id\n  JOIN products p ON p.product_id = oi.product_id\n  WHERE o.order_status NOT IN ('canceled', 'unavailable')\n    AND o.order_purchase_timestamp >= '2018-01-01'\n    AND o.order_purchase_timestamp < '2018-09-01'\n  GROUP BY 1, 2\n),\nranked AS (\n  SELECT m.category,\n         m.month,\n         m.revenue,\n         t.revenue AS total_revenue,\n         rank() OVER (PARTITION BY m.category ORDER BY m.revenue DESC) AS rk\n  FROM monthly m\n  JOIN top3 t ON t.category = m.category\n)\nSELECT category,\n       month AS best_month_2018,\n       round(revenue, 2) AS best_month_revenue,\n       round(total_revenue, 2) AS total_revenue_all_periods\nFROM ranked\nWHERE rk = 1\nORDER BY total_revenue DESC",
+          "status": "ok",
+          "detail": null
+        }
+      ],
+      "grading": "manual"
+    },
+    {
+      "id": "h16",
+      "question": "Which sellers had sales increase every quarter in 2018?",
+      "category": "time_series",
+      "difficulty": "hard",
+      "expected": "answer",
+      "outcome": "answer",
+      "correct": true,
+      "reason": "match",
+      "sql": "WITH seller_quarters AS (\n  SELECT oi.seller_id,\n         CASE\n           WHEN o.order_purchase_timestamp >= '2018-01-01' AND o.order_purchase_timestamp < '2018-04-01' THEN 1\n           WHEN o.order_purchase_timestamp >= '2018-04-01' AND o.order_purchase_timestamp < '2018-07-01' THEN 2\n           WHEN o.order_purchase_timestamp >= '2018-07-01' AND o.order_purchase_timestamp < '2018-09-01' THEN 3\n         END AS quarter_no,\n         oi.price\n  FROM order_items oi\n  JOIN orders o ON o.order_id = oi.order_id\n  WHERE o.order_status NOT IN ('canceled', 'unavailable')\n    AND o.order_purchase_timestamp >= '2018-01-01'\n    AND o.order_purchase_timestamp < '2018-09-01'\n),\nquarterly_sales AS (\n  SELECT seller_id, quarter_no, sum(price) AS sales\n  FROM seller_quarters\n  WHERE quarter_no IS NOT NULL\n  GROUP BY seller_id, quarter_no\n),\npivoted AS (\n  SELECT seller_id,\n         max(CASE WHEN quarter_no = 1 THEN sales END) AS q1_sales,\n         max(CASE WHEN quarter_no = 2 THEN sales END) AS q2_sales,\n         max(CASE WHEN quarter_no = 3 THEN sales END) AS q3_sales\n  FROM quarterly_sales\n  GROUP BY seller_id\n)\nSELECT seller_id,\n       round(q1_sales, 2) AS q1_2018_sales,\n       round(q2_sales, 2) AS q2_2018_sales,\n       round(q3_sales, 2) AS q3_2018_sales\nFROM pivoted\nWHERE q1_sales IS NOT NULL\n  AND q2_sales IS NOT NULL\n  AND q3_sales IS NOT NULL\n  AND q2_sales > q1_sales\n  AND q3_sales > q2_sales\nORDER BY seller_id",
+      "error": null,
+      "error_stage": null,
+      "note": "The error came from the first version's typo (`q3_2018_sales_placeholder`). The corrected query below fixes it and is otherwise unchanged.\n\nAssumptions: sales are item sales (SUM of `price`, excluding freight), canceled and unavailable orders are excluded, Q3 uses July and August only, and Q4 2018 is not in the data, so the test covers Q1 to Q3.",
+      "pred_rows": 54,
+      "gold_rows": 54,
+      "input_tokens": 15197,
+      "output_tokens": 4276,
+      "cost_usd": 0.0036577,
+      "latency_ms": 16604.104584024753,
+      "pred_columns": [
+        "seller_id",
+        "q1_2018_sales",
+        "q2_2018_sales",
+        "q3_2018_sales"
+      ],
+      "pred_data": [
+        [
+          "0417b067eeab773d2f7061a726dc477f",
+          322.27,
+          516.95,
+          1019.96
+        ],
+        [
+          "082e0bf4cb865a6533b1e8e498cc0255",
+          61.8,
+          626.9,
+          631.5
+        ],
+        [
+          "0c8380b62e38e8a1e6adbeba7eb9688c",
+          540.1,
+          640.7,
+          1108.3
+        ],
+        [
+          "157c3e4b42f81ac4a44e8b1ca2fe9876",
+          523.5,
+          620.0,
+          773.5
+        ],
+        [
+          "1b45169b635ef59425637e9a33eb5fb3",
+          33.0,
+          36.0,
+          239.9
+        ],
+        [
+          "2379bdc3888025689a9deb7b141507d5",
+          319.6,
+          329.9,
+          350.0
+        ],
+        [
+          "23a0ffca143a15b9b5bbdb7d552f626a",
+          769.5,
+          1289.05,
+          1659.96
+        ],
+        [
+          "26785a546900236d66f2e4197c211158",
+          89.9,
+          184.9,
+          404.7
+        ],
+        [
+          "26af45f5dfd967225a832838aa4e24a3",
+          62.0,
+          213.6,
+          297.5
+        ],
+        [
+          "289cdb325fb7e7f891c38608bf9e0962",
+          1425.4,
+          3435.69,
+          8683.86
+        ],
+        [
+          "2b3e4a2a3ea8e01938cabda2a3e5cc79",
+          1518.95,
+          1683.98,
+          3114.89
+        ],
+        [
+          "2d2c62bef4c8ba0dd74e0e228e808539",
+          497.0,
+          965.0,
+          1837.0
+        ],
+        [
+          "31ae0774c17fabd06ff707cc5bde005f",
+          599.98,
+          949.98,
+          1139.97
+        ],
+        [
+          "39c763cca83e654764b7a4a650fb9b7c",
+          59.0,
+          189.0,
+          207.0
+        ],
+        [
+          "3f995f07c49d0d55a99d5c54957f7d81",
+          79.0,
+          118.0,
+          413.0
+        ],
+        [
+          "40db9e9aa57f7bb151bcda6b0f9bdbb7",
+          1780.0,
+          9520.0,
+          11868.0
+        ],
+        [
+          "4736e9d642ef4257cd7622516931eb51",
+          33.99,
+          174.95,
+          450.98
+        ],
+        [
+          "4b0fdb526525f9890eb145bf1534640e",
+          439.8,
+          625.3,
+          1353.9
+        ],
+        [
+          "4bfc7a4a1cf8d4d2121c27422d9e50b5",
+          188.7,
+          3616.4,
+          4319.3
+        ],
+        [
+          "4e17c65a516f69d023a2ae78b84f28d6",
+          1036.1,
+          1346.98,
+          1756.69
+        ],
+        [
+          "4eb61f060e7dcc1d5a80d806c35cc541",
+          170.0,
+          258.0,
+          885.0
+        ],
+        [
+          "640e21a7d01df7614a3b4923e990d40c",
+          26.4,
+          3400.25,
+          4172.23
+        ],
+        [
+          "6560211a19b47992c3666cc44a7e94c0",
+          16322.93,
+          24254.0,
+          26835.0
+        ],
+        [
+          "6860153b69cc696d5dcfe1cdaaafcf62",
+          519.65,
+          1319.63,
+          1749.64
+        ],
+        [
+          "70b52a4cfc823994561b00bad161b4ed",
+          58.5,
+          117.0,
+          351.0
+        ],
+        [
+          "72bc2cce903c872fe376a8faaa81d237",
+          37.9,
+          77.8,
+          258.8
+        ],
+        [
+          "77e4abfd739aed9c46480f90f81c0eb4",
+          1085.0,
+          1266.0,
+          1385.99
+        ],
+        [
+          "8090490573c6c0aa343a7231ebcb8c86",
+          322.7,
+          560.64,
+          2482.88
+        ],
+        [
+          "83645b1645cdee8953ee54c29ceed564",
+          59.9,
+          89.0,
+          134.8
+        ],
+        [
+          "8bdd8e3fd58bafa48af76b2c5fd71974",
+          229.9,
+          877.97,
+          1027.96
+        ],
+        [
+          "8f54d64f28a993550aa7943f12572959",
+          625.25,
+          719.15,
+          815.6
+        ],
+        [
+          "95ec4458365c4d11f452ccf538377619",
+          256.7,
+          797.23,
+          812.83
+        ],
+        [
+          "97512d3fc193b2d1dfcdba0f9d1f0f8a",
+          299.99,
+          463.93,
+          694.95
+        ],
+        [
+          "9aa388272ee334b6ae07bc73706e254a",
+          96.0,
+          180.0,
+          402.0
+        ],
+        [
+          "9c7fd21e0aa159b20da593371f08ff7c",
+          209.9,
+          293.6,
+          294.8
+        ],
+        [
+          "9f505651f4a6abe901a56cdc21508025",
+          5365.37,
+          7773.84,
+          9742.99
+        ],
+        [
+          "a67780aba9dd436e7ac0aa1f889e73ec",
+          42.6,
+          132.8,
+          343.8
+        ],
+        [
+          "aced59e9b31ef866a94f9e7f29d8d418",
+          959.7,
+          971.0,
+          1056.0
+        ],
+        [
+          "b19f3ca2ea475913750f25a5c37c8d8f",
+          798.69,
+          918.48,
+          2118.19
+        ],
+        [
+          "b39d7fe263ef469605dbb32608aee0af",
+          891.4,
+          1775.2,
+          2136.8
+        ],
+        [
+          "b561927807645834b59ef0d16ba55a24",
+          1287.3,
+          1553.8,
+          1660.89
+        ],
+        [
+          "b5abf4f36adc043117b4fca82c22984c",
+          49.9,
+          91.8,
+          429.6
+        ],
+        [
+          "b76dba6c951ab00dc4edf0a1aa88037e",
+          228.85,
+          393.57,
+          394.81
+        ],
+        [
+          "bbaff50f3b708fda865918715276cd87",
+          51.0,
+          64.6,
+          130.0
+        ],
+        [
+          "c3acdfac4e3e97ff87529454fbc03642",
+          1299.0,
+          5395.0,
+          10094.0
+        ],
+        [
+          "cd6efc47efaabf134f8bdb654e10b4f1",
+          713.8,
+          1217.89,
+          1705.87
+        ],
+        [
+          "cfe94489ddd337d1e29e12f2a7205d10",
+          396.0,
+          891.0,
+          1089.0
+        ],
+        [
+          "e250d617a0ad591ba9bd663e584a895d",
+          192.95,
+          229.79,
+          481.38
+        ],
+        [
+          "e8a85b5f3df47be0984c55fd4064dbb4",
+          36.0,
+          69.0,
+          638.0
+        ],
+        [
+          "e9bc59e7b60fc3063eb2290deda4cced",
+          3959.98,
+          5251.3,
+          7388.23
+        ],
+        [
+          "ea67327e24487bdfac5fbfa37ea124df",
+          810.0,
+          2346.4,
+          3093.78
+        ],
+        [
+          "eeb6de78f79159600292e314a77cbd18",
+          4936.0,
+          7102.0,
+          8853.0
+        ],
+        [
+          "f97e2b0650c2068227e1d366140eb62f",
+          198.0,
+          815.0,
+          970.0
+        ],
+        [
+          "fbc14c0cf93505ef89f64665ffa4a7b5",
+          1710.96,
+          2970.96,
+          3390.96
+        ]
+      ],
+      "pred_truncated": false,
+      "tables": [
+        "orders",
+        "order_items",
+        "sellers",
+        "customers",
+        "order_payments",
+        "order_reviews"
+      ],
+      "example_ids": [
+        "ts-12",
+        "ts-06",
+        "flt-18"
+      ],
+      "attempts": 2,
+      "attempt_log": [
+        {
+          "sql": "WITH seller_quarters AS (\n  SELECT oi.seller_id,\n         CASE\n           WHEN o.order_purchase_timestamp >= '2018-01-01' AND o.order_purchase_timestamp < '2018-04-01' THEN 1\n           WHEN o.order_purchase_timestamp >= '2018-04-01' AND o.order_purchase_timestamp < '2018-07-01' THEN 2\n           WHEN o.order_purchase_timestamp >= '2018-07-01' AND o.order_purchase_timestamp < '2018-09-01' THEN 3\n         END AS quarter_no,\n         oi.price\n  FROM order_items oi\n  JOIN orders o ON o.order_id = oi.order_id\n  WHERE o.order_status NOT IN ('canceled', 'unavailable')\n    AND o.order_purchase_timestamp >= '2018-01-01'\n    AND o.order_purchase_timestamp < '2018-09-01'\n),\nquarterly_sales AS (\n  SELECT seller_id, quarter_no, sum(price) AS sales\n  FROM seller_quarters\n  WHERE quarter_no IS NOT NULL\n  GROUP BY seller_id, quarter_no\n),\npivoted AS (\n  SELECT seller_id,\n         max(CASE WHEN quarter_no = 1 THEN sales END) AS q1_sales,\n         max(CASE WHEN quarter_no = 2 THEN sales END) AS q2_sales,\n         max(CASE WHEN quarter_no = 3 THEN sales END) AS q3_sales\n  FROM quarterly_sales\n  GROUP BY seller_id\n)\nSELECT seller_id,\n       round(q1_sales, 2) AS q1_2018_sales,\n       round(q2_sales, 2) AS q2_2018_sales,\n       round(q3_2018_sales_placeholder, 2) AS q3_2018_sales\nFROM pivoted\nWHERE q1_sales IS NOT NULL\n  AND q2_sales IS NOT NULL\n  AND q3_sales IS NOT NULL\n  AND q2_sales > q1_sales\n  AND q3_sales > q2_sales\nORDER BY seller_id",
+          "status": "error",
+          "detail": "column \"q3_2018_sales_placeholder\" does not exist"
+        },
+        {
+          "sql": "WITH seller_quarters AS (\n  SELECT oi.seller_id,\n         CASE\n           WHEN o.order_purchase_timestamp >= '2018-01-01' AND o.order_purchase_timestamp < '2018-04-01' THEN 1\n           WHEN o.order_purchase_timestamp >= '2018-04-01' AND o.order_purchase_timestamp < '2018-07-01' THEN 2\n           WHEN o.order_purchase_timestamp >= '2018-07-01' AND o.order_purchase_timestamp < '2018-09-01' THEN 3\n         END AS quarter_no,\n         oi.price\n  FROM order_items oi\n  JOIN orders o ON o.order_id = oi.order_id\n  WHERE o.order_status NOT IN ('canceled', 'unavailable')\n    AND o.order_purchase_timestamp >= '2018-01-01'\n    AND o.order_purchase_timestamp < '2018-09-01'\n),\nquarterly_sales AS (\n  SELECT seller_id, quarter_no, sum(price) AS sales\n  FROM seller_quarters\n  WHERE quarter_no IS NOT NULL\n  GROUP BY seller_id, quarter_no\n),\npivoted AS (\n  SELECT seller_id,\n         max(CASE WHEN quarter_no = 1 THEN sales END) AS q1_sales,\n         max(CASE WHEN quarter_no = 2 THEN sales END) AS q2_sales,\n         max(CASE WHEN quarter_no = 3 THEN sales END) AS q3_sales\n  FROM quarterly_sales\n  GROUP BY seller_id\n)\nSELECT seller_id,\n       round(q1_sales, 2) AS q1_2018_sales,\n       round(q2_sales, 2) AS q2_2018_sales,\n       round(q3_sales, 2) AS q3_2018_sales\nFROM pivoted\nWHERE q1_sales IS NOT NULL\n  AND q2_sales IS NOT NULL\n  AND q3_sales IS NOT NULL\n  AND q2_sales > q1_sales\n  AND q3_sales > q2_sales\nORDER BY seller_id",
+          "status": "ok",
+          "detail": null
+        }
+      ],
+      "grading": "manual"
+    },
+    {
+      "id": "h17",
+      "question": "What\u2019s the average time between a repeat customer\u2019s first and second order?",
+      "category": "window_functions",
+      "difficulty": "hard",
+      "expected": "answer",
+      "outcome": "answer",
+      "correct": true,
+      "reason": "match",
+      "sql": "WITH ordered AS (\n  SELECT c.customer_unique_id,\n         o.order_purchase_timestamp AS purchased_at,\n         row_number() OVER (\n           PARTITION BY c.customer_unique_id\n           ORDER BY o.order_purchase_timestamp, o.order_id\n         ) AS n\n  FROM orders o\n  JOIN customers c ON c.customer_id = o.customer_id\n), first_two AS (\n  SELECT customer_unique_id,\n         max(purchased_at) FILTER (WHERE n = 1) AS first_order_at,\n         max(purchased_at) FILTER (WHERE n = 2) AS second_order_at\n  FROM ordered\n  WHERE n <= 2\n  GROUP BY customer_unique_id\n  HAVING count(*) = 2\n)\nSELECT round(avg(extract(epoch FROM second_order_at - first_order_at) / 86400)::numeric, 2) AS avg_days_first_to_second\nFROM first_two",
+      "error": null,
+      "error_stage": null,
+      "note": "I counted a repeat customer as a unique person (`customer_unique_id`) with at least two orders, and included all order statuses since this is a timing question, not a revenue one. The result is the mean gap in days, as a decimal.",
+      "pred_rows": 1,
+      "gold_rows": 1,
+      "input_tokens": 6761,
+      "output_tokens": 955,
+      "cost_usd": 0.0011535999999999999,
+      "latency_ms": 5355.8818330056965,
+      "pred_columns": [
+        "avg_days_first_to_second"
+      ],
+      "pred_data": [
+        [
+          80.35
+        ]
+      ],
+      "pred_truncated": false,
+      "tables": [
+        "orders",
+        "customers",
+        "order_items",
+        "order_reviews",
+        "order_payments",
+        "sellers"
+      ],
+      "example_ids": [
+        "win-10",
+        "flt-13",
+        "join-07"
+      ],
+      "attempts": 1,
+      "attempt_log": [
+        {
+          "sql": "WITH ordered AS (\n  SELECT c.customer_unique_id,\n         o.order_purchase_timestamp AS purchased_at,\n         row_number() OVER (\n           PARTITION BY c.customer_unique_id\n           ORDER BY o.order_purchase_timestamp, o.order_id\n         ) AS n\n  FROM orders o\n  JOIN customers c ON c.customer_id = o.customer_id\n), first_two AS (\n  SELECT customer_unique_id,\n         max(purchased_at) FILTER (WHERE n = 1) AS first_order_at,\n         max(purchased_at) FILTER (WHERE n = 2) AS second_order_at\n  FROM ordered\n  WHERE n <= 2\n  GROUP BY customer_unique_id\n  HAVING count(*) = 2\n)\nSELECT round(avg(extract(epoch FROM second_order_at - first_order_at) / 86400)::numeric, 2) AS avg_days_first_to_second\nFROM first_two",
+          "status": "ok",
+          "detail": null
+        }
+      ],
+      "grading": "auto"
+    },
+    {
+      "id": "h18",
+      "question": "What was our profit margin last quarter?",
+      "category": "refusal",
+      "difficulty": "medium",
+      "expected": "refuse",
+      "outcome": "refuse",
+      "correct": true,
+      "reason": "expected refuse, got refuse",
+      "sql": null,
+      "error": null,
+      "error_stage": null,
+      "note": "The database has no cost or profit data (no COGS, purchase cost, or margin fields), so profit margin cannot be calculated from it.",
+      "pred_rows": null,
+      "gold_rows": null,
+      "input_tokens": 6735,
+      "output_tokens": 129,
+      "cost_usd": 0.000738,
+      "latency_ms": 1449.2545410175808,
+      "pred_columns": null,
+      "pred_data": null,
+      "pred_truncated": false,
+      "tables": [
+        "order_items",
+        "orders",
+        "order_reviews",
+        "order_payments",
+        "customers",
+        "sellers"
+      ],
+      "example_ids": [
+        "ts-12",
+        "win-17",
+        "ts-03"
+      ],
+      "attempts": 1,
+      "attempt_log": [
+        {
+          "sql": null,
+          "status": "refuse",
+          "detail": "The database has no cost or profit data (no COGS, purchase cost, or margin fields), so profit margin cannot be calculated from it."
+        }
+      ],
+      "grading": "auto"
+    },
+    {
+      "id": "h19",
+      "question": "Which marketing channel drives the most sales?",
+      "category": "refusal",
+      "difficulty": "medium",
+      "expected": "refuse",
+      "outcome": "refuse",
+      "correct": true,
+      "reason": "expected refuse, got refuse",
+      "sql": null,
+      "error": null,
+      "error_stage": null,
+      "note": "The database has no marketing channel or campaign data, so the channel that drives sales cannot be determined.",
+      "pred_rows": null,
+      "gold_rows": null,
+      "input_tokens": 6740,
+      "output_tokens": 39,
+      "cost_usd": 0.0006935,
+      "latency_ms": 709.8743329988793,
+      "pred_columns": null,
+      "pred_data": null,
+      "pred_truncated": false,
+      "tables": [
+        "customers",
+        "order_items",
+        "sellers",
+        "order_payments",
+        "orders",
+        "products"
+      ],
+      "example_ids": [
+        "flt-18",
+        "join-01",
+        "win-01"
+      ],
+      "attempts": 1,
+      "attempt_log": [
+        {
+          "sql": null,
+          "status": "refuse",
+          "detail": "The database has no marketing channel or campaign data, so the channel that drives sales cannot be determined."
+        }
+      ],
+      "grading": "auto"
+    },
+    {
+      "id": "h20",
+      "question": "Show me our best customers.",
+      "category": "ambiguous",
+      "difficulty": "medium",
+      "expected": "clarify",
+      "outcome": "clarify",
+      "correct": true,
+      "reason": "expected clarify, got clarify",
+      "sql": null,
+      "error": null,
+      "error_stage": null,
+      "note": "How should I define \"best customers\": by total revenue (what they paid), by number of orders, or by a combination, and over what time period (all time or a specific range)?",
+      "pred_rows": null,
+      "gold_rows": null,
+      "input_tokens": 6303,
+      "output_tokens": 111,
+      "cost_usd": 0.0006858000000000001,
+      "latency_ms": 1147.8961249813437,
+      "pred_columns": null,
+      "pred_data": null,
+      "pred_truncated": false,
+      "tables": [
+        "customers",
+        "order_reviews",
+        "order_items",
+        "orders",
+        "order_payments",
+        "sellers"
+      ],
+      "example_ids": [
+        "amb-02",
+        "agg-02",
+        "flt-13"
+      ],
+      "attempts": 1,
+      "attempt_log": [
+        {
+          "sql": null,
+          "status": "clarify",
+          "detail": "How should I define \"best customers\": by total revenue (what they paid), by number of orders, or by a combination, and over what time period (all time or a specific range)?"
+        }
+      ],
+      "grading": "auto"
+    }
+  ]
+}

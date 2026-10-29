@@ -1,0 +1,363 @@
+# Blind hold-out set, written by the project owner (2026-10-29) without seeing the prompts.
+#
+# Rules: these questions never reach a prompt or the few-shot index (enforced by
+# evals/dataset.py, which treats `holdout` like `test`), and the agent is run on them once
+# per version, frozen before the set was seen. Prompts and specs must not be changed
+# because of these questions.
+#
+# Gold SQL follows the same conventions as questions.yaml (A1-A8 in docs/schema.yaml).
+#
+# grading
+#   auto    result-set match against gold (as in the main benchmark)
+#   manual  open-ended question: the answer has no single correct shape (no N given, labels,
+#           a "compare" or "trend" request). gold_sql is the REFERENCE the reviewer checks the
+#           agent's numbers against; the verdict uses the rubric in holdout_review.md.
+# accept_answer: for a clarify question, answering with an explicitly stated definition is also
+#           acceptable (the owner's spec for h20).
+
+questions:
+
+  # ---------------------------------------------------------------- easy
+  - id: h01
+    split: holdout
+    category: filtering
+    difficulty: easy
+    expected: answer
+    question: How many orders did we get in November 2017?
+    gold_sql: |
+      SELECT count(*) AS orders
+      FROM orders
+      WHERE order_purchase_timestamp >= '2017-11-01' AND order_purchase_timestamp < '2017-12-01'
+
+  - id: h02
+    split: holdout
+    category: aggregation
+    difficulty: easy
+    expected: answer
+    question: What’s our most popular payment method?
+    gold_sql: |
+      SELECT payment_type
+      FROM order_payments
+      GROUP BY payment_type
+      ORDER BY count(DISTINCT order_id) DESC
+      LIMIT 1
+    notes: Popularity = orders using it. Counting payment rows gives the same answer (credit_card).
+
+  - id: h03
+    split: holdout
+    category: aggregation
+    difficulty: easy
+    expected: answer
+    question: What’s the average review score across all orders?
+    gold_sql: |
+      SELECT round(avg(review_score), 2) AS avg_score
+      FROM (SELECT DISTINCT review_id, review_score FROM order_reviews) reviews
+    notes: A8 (each review once). Averaging per order or per review row also gives 4.09.
+
+  - id: h04
+    split: holdout
+    category: filtering
+    difficulty: easy
+    expected: answer
+    question: How many customers do we have in São Paulo state?
+    gold_sql: SELECT count(DISTINCT customer_unique_id) AS customers FROM customers WHERE customer_state = 'SP'
+    notes: Customers = people (customer_unique_id).
+
+  # ---------------------------------------------------------------- medium
+  - id: h05
+    split: holdout
+    category: joins
+    difficulty: medium
+    expected: answer
+    question: Which 5 product categories brought in the most revenue in 2017?
+    gold_sql: |
+      SELECT coalesce(p.product_category_name_english, 'unknown') AS category
+      FROM order_items oi
+      JOIN orders o ON o.order_id = oi.order_id
+      JOIN products p ON p.product_id = oi.product_id
+      WHERE o.order_status NOT IN ('canceled', 'unavailable')
+        AND o.order_purchase_timestamp >= '2017-01-01' AND o.order_purchase_timestamp < '2018-01-01'
+      GROUP BY 1
+      ORDER BY sum(oi.price) DESC
+      LIMIT 5
+
+  - id: h06
+    split: holdout
+    category: joins
+    difficulty: medium
+    expected: answer
+    grading: manual
+    question: Which states have the highest average order value?
+    gold_sql: |
+      WITH per_order AS (
+        SELECT o.order_id, c.customer_state, sum(p.payment_value) AS order_value
+        FROM orders o
+        JOIN customers c ON c.customer_id = o.customer_id
+        JOIN order_payments p ON p.order_id = o.order_id
+        GROUP BY o.order_id, c.customer_state
+      )
+      SELECT customer_state, round(avg(order_value), 2) AS avg_order_value, count(*) AS orders
+      FROM per_order
+      GROUP BY customer_state
+      ORDER BY avg_order_value DESC
+    notes: >
+      No N given, so the result shape is open. Reference = every state ranked (A7: an average of
+      payments includes every status). Rubric: the top states listed must match this ranking.
+      Small states (few orders) top it; flagging that is a plus.
+
+  - id: h07
+    split: holdout
+    category: filtering
+    difficulty: medium
+    expected: answer
+    question: What percentage of delivered orders arrived after the estimated delivery date?
+    gold_sql: |
+      SELECT round(100.0 * count(*) FILTER (WHERE order_delivered_customer_date > order_estimated_delivery_date) / count(*), 2) AS pct_late
+      FROM orders
+      WHERE order_status = 'delivered' AND order_delivered_customer_date IS NOT NULL
+    notes: Denominator = delivered orders with a delivery date (8 delivered orders have none).
+
+  - id: h08
+    split: holdout
+    category: joins
+    difficulty: medium
+    expected: answer
+    question: Who are our top 10 sellers by number of orders, and what are their average review scores?
+    gold_sql: |
+      WITH order_sellers AS (
+        SELECT DISTINCT order_id, seller_id FROM order_items
+      ), top_sellers AS (
+        SELECT seller_id, count(*) AS orders
+        FROM order_sellers
+        GROUP BY seller_id
+        ORDER BY count(*) DESC
+        LIMIT 10
+      )
+      SELECT t.seller_id, round(avg(r.review_score), 2) AS avg_score
+      FROM top_sellers t
+      JOIN order_sellers os ON os.seller_id = t.seller_id
+      JOIN order_reviews r ON r.order_id = os.order_id
+      GROUP BY t.seller_id
+    notes: Orders counted once per seller (not per item); every status (A7, no sales word).
+
+  - id: h09
+    split: holdout
+    category: joins
+    difficulty: medium
+    expected: answer
+    question: How long does it take on average from purchase to delivery, by state?
+    gold_sql: |
+      SELECT c.customer_state,
+             round(avg(extract(epoch FROM o.order_delivered_customer_date - o.order_purchase_timestamp) / 86400)::numeric, 2) AS avg_delivery_days
+      FROM orders o
+      JOIN customers c ON c.customer_id = o.customer_id
+      WHERE o.order_status = 'delivered' AND o.order_delivered_customer_date IS NOT NULL
+      GROUP BY c.customer_state
+    notes: Customer (delivery) state; decimal days per the delivery_time rule.
+
+  - id: h10
+    split: holdout
+    category: aggregation
+    difficulty: medium
+    expected: answer
+    grading: manual
+    question: Do customers who pay in more installments spend more per order?
+    gold_sql: |
+      WITH per_order AS (
+        SELECT order_id, max(payment_installments) AS installments, sum(payment_value) AS order_value
+        FROM order_payments
+        GROUP BY order_id
+      )
+      SELECT installments, count(*) AS orders, round(avg(order_value), 2) AS avg_order_value
+      FROM per_order
+      GROUP BY installments
+      ORDER BY installments
+    notes: >
+      Open analytic question. Rubric: compares order value across installment counts (or
+      buckets) at the order level (payments summed per order), and the conclusion matches the
+      reference (yes: order value rises with installments).
+
+  - id: h11
+    split: holdout
+    category: window_functions
+    difficulty: medium
+    expected: answer
+    grading: manual
+    question: Which product categories get the most 1-star reviews as a share of their orders?
+    gold_sql: |
+      WITH order_cats AS (
+        SELECT DISTINCT oi.order_id, coalesce(p.product_category_name_english, 'unknown') AS category
+        FROM order_items oi
+        JOIN products p ON p.product_id = oi.product_id
+      )
+      SELECT oc.category,
+             count(DISTINCT oc.order_id) AS orders,
+             round(100.0 * count(DISTINCT oc.order_id) FILTER (WHERE r.review_score = 1) / count(DISTINCT oc.order_id), 2) AS pct_one_star
+      FROM order_cats oc
+      LEFT JOIN order_reviews r ON r.order_id = oc.order_id
+      GROUP BY oc.category
+      ORDER BY pct_one_star DESC
+    notes: >
+      No N or minimum size given. Rubric: share = orders with a 1-star review / the category's
+      orders (per order, not per item), ranking consistent with the reference. Applying a
+      minimum-orders threshold (and saying so) is fine, and better.
+
+  # ---------------------------------------------------------------- hard
+  - id: h12
+    split: holdout
+    category: time_series
+    difficulty: hard
+    expected: answer
+    grading: manual
+    question: How did monthly revenue trend in 2018 compared to the same months in 2017?
+    gold_sql: |
+      SELECT extract(month FROM o.order_purchase_timestamp)::int AS month,
+             sum(p.payment_value) FILTER (WHERE o.order_purchase_timestamp >= '2017-01-01' AND o.order_purchase_timestamp < '2018-01-01') AS revenue_2017,
+             sum(p.payment_value) FILTER (WHERE o.order_purchase_timestamp >= '2018-01-01' AND o.order_purchase_timestamp < '2019-01-01') AS revenue_2018
+      FROM order_payments p
+      JOIN orders o ON o.order_id = p.order_id
+      WHERE o.order_status NOT IN ('canceled', 'unavailable')
+        AND o.order_purchase_timestamp >= '2017-01-01' AND o.order_purchase_timestamp < '2018-09-01'
+      GROUP BY 1
+      ORDER BY 1
+    notes: >
+      Rubric: month-by-month 2018 vs 2017 revenue (payments, A1/A2) for January-August, with
+      numbers matching the reference. Stopping at August (or flagging that September onwards is
+      missing) is required by A3.
+
+  - id: h13
+    split: holdout
+    category: aggregation
+    difficulty: hard
+    expected: answer
+    question: What share of customers ordered more than once?
+    gold_sql: |
+      WITH per_person AS (
+        SELECT c.customer_unique_id, count(*) AS orders
+        FROM orders o
+        JOIN customers c ON c.customer_id = o.customer_id
+        GROUP BY c.customer_unique_id
+      )
+      SELECT round(100.0 * count(*) FILTER (WHERE orders > 1) / count(*), 2) AS pct_repeat
+      FROM per_person
+
+  - id: h14
+    split: holdout
+    category: joins
+    difficulty: hard
+    expected: answer
+    grading: manual
+    question: Are late deliveries hurting our review scores? Compare on-time vs. late orders.
+    gold_sql: |
+      SELECT (o.order_delivered_customer_date > o.order_estimated_delivery_date) AS late,
+             count(*) AS reviews,
+             round(avg(r.review_score), 2) AS avg_score
+      FROM orders o
+      JOIN order_reviews r ON r.order_id = o.order_id
+      WHERE o.order_status = 'delivered' AND o.order_delivered_customer_date IS NOT NULL
+      GROUP BY 1
+    notes: >
+      Labels are free-form, so manual. Rubric: two groups (on-time vs late, delivered orders),
+      average scores matching the reference, and the conclusion that late orders score much lower.
+
+  - id: h15
+    split: holdout
+    category: window_functions
+    difficulty: hard
+    expected: answer
+    grading: manual
+    question: For each of the top 3 categories by revenue, which month in 2018 was their best?
+    gold_sql: |
+      WITH cat AS (
+        SELECT coalesce(p.product_category_name_english, 'unknown') AS category,
+               date_trunc('month', o.order_purchase_timestamp)::date AS month,
+               sum(oi.price) AS revenue
+        FROM order_items oi
+        JOIN orders o ON o.order_id = oi.order_id
+        JOIN products p ON p.product_id = oi.product_id
+        WHERE o.order_status NOT IN ('canceled', 'unavailable')
+        GROUP BY 1, 2
+      ), top3 AS (
+        SELECT category FROM cat GROUP BY category ORDER BY sum(revenue) DESC LIMIT 3
+      ), ranked AS (
+        SELECT c.category, c.month, row_number() OVER (PARTITION BY c.category ORDER BY c.revenue DESC) AS rn
+        FROM cat c JOIN top3 USING (category)
+        WHERE c.month >= '2018-01-01' AND c.month < '2019-01-01'
+      )
+      SELECT category, month FROM ranked WHERE rn = 1
+    notes: >
+      "Top 3 by revenue" is unqualified: the reference uses all-time revenue. Rubric: also accept
+      top 3 by 2018 revenue if stated; the best month per category must match for the chosen set.
+
+  - id: h16
+    split: holdout
+    category: time_series
+    difficulty: hard
+    expected: answer
+    grading: manual
+    question: Which sellers had sales increase every quarter in 2018?
+    gold_sql: |
+      WITH q AS (
+        SELECT oi.seller_id,
+               sum(oi.price) FILTER (WHERE o.order_purchase_timestamp >= '2018-01-01' AND o.order_purchase_timestamp < '2018-04-01') AS q1,
+               sum(oi.price) FILTER (WHERE o.order_purchase_timestamp >= '2018-04-01' AND o.order_purchase_timestamp < '2018-07-01') AS q2,
+               sum(oi.price) FILTER (WHERE o.order_purchase_timestamp >= '2018-07-01' AND o.order_purchase_timestamp < '2018-10-01') AS q3
+        FROM order_items oi
+        JOIN orders o ON o.order_id = oi.order_id
+        WHERE o.order_status NOT IN ('canceled', 'unavailable')
+        GROUP BY oi.seller_id
+      )
+      SELECT seller_id, q1, q2, q3 FROM q WHERE q1 < q2 AND q2 < q3
+    notes: >
+      Trap: 2018 data ends in August, so Q3 has two months and Q4 has none (A3). Rubric: sellers
+      with Q1 < Q2 < Q3 item sales, matching the reference, AND a warning that Q3 is partial / Q4
+      missing. An answer that silently treats Q3 as complete gets partial credit at most.
+
+  - id: h17
+    split: holdout
+    category: window_functions
+    difficulty: hard
+    expected: answer
+    question: What’s the average time between a repeat customer’s first and second order?
+    gold_sql: |
+      WITH ordered AS (
+        SELECT c.customer_unique_id, o.order_purchase_timestamp,
+               row_number() OVER (PARTITION BY c.customer_unique_id ORDER BY o.order_purchase_timestamp) AS n
+        FROM orders o
+        JOIN customers c ON c.customer_id = o.customer_id
+      ), pairs AS (
+        SELECT customer_unique_id,
+               max(order_purchase_timestamp) FILTER (WHERE n = 2) - max(order_purchase_timestamp) FILTER (WHERE n = 1) AS gap
+        FROM ordered
+        WHERE n <= 2
+        GROUP BY customer_unique_id
+        HAVING count(*) = 2
+      )
+      SELECT round(avg(extract(epoch FROM gap) / 86400)::numeric, 2) AS avg_days_between
+      FROM pairs
+
+  # ---------------------------------------------------------------- tricky
+  - id: h18
+    split: holdout
+    category: refusal
+    difficulty: medium
+    expected: refuse
+    question: What was our profit margin last quarter?
+    reason: No profit or cost data (owner's spec - should say it isn't available).
+
+  - id: h19
+    split: holdout
+    category: refusal
+    difficulty: medium
+    expected: refuse
+    question: Which marketing channel drives the most sales?
+    reason: No marketing channel data (owner's spec).
+
+  - id: h20
+    split: holdout
+    category: ambiguous
+    difficulty: medium
+    expected: clarify
+    accept_answer: true
+    question: Show me our best customers.
+    reason: Ambiguous ("best" by spend, orders, reviews). Owner's spec - clarify, or answer while stating the definition used.

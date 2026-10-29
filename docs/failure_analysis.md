@@ -80,6 +80,17 @@ otherwise have shown up as agent "failures".
 | Out-of-credit API errors scored as 37% and 0% accuracy | Implausible results | Runs > 10% LLM errors are marked invalid |
 | join-18 hit two contradictory A7 clauses | Opus v2 miss | Spec v3 precedence rule |
 
+## F. Hold-out and Phase 5 runs
+
+- **Hold-out h06** (average order value by state), on both models, is the same convention edge as
+  join-24: AOV is treated as a sales metric. See holdout_review.md and the A9 proposal in D32.
+- **v6 / Haiku, ts-19** (top 5 categories by 2017 revenue): `ORDER BY revenue_2017 DESC` ranked a
+  category with *no* 2017 sales first, because Postgres sorts NULLs first under DESC. This is the
+  exact trap the original gold SQL fell into (category E). The raw and the safety-validated SQL
+  return identical rows, so the safety layer did not cause it. v5/Haiku missed a different
+  question (join-24) in its run: single-question run-to-run noise on hard edges.
+  A cheap future guard: have the self-correction check flag a NULL in a ranked column's first row.
+
 ## What to try next
 
 1. **A blind hold-out set.** 15–20 questions written by someone who has not seen the prompts or

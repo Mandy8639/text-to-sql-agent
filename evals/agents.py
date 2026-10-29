@@ -9,6 +9,7 @@ from app.agent.types import AgentResult
 from app.config import Settings
 from app.db.connection import make_engine
 from app.llm.factory import get_provider
+from app.observability.tracing import get_tracer
 from app.retrieval.embedder import get_embedder
 from app.retrieval.store import VectorStore
 
@@ -42,7 +43,11 @@ def _pipeline(name: str) -> Callable[[Settings], Agent]:
             else None
         )
         return PipelineAgent.from_engine(
-            config, get_provider(settings), make_engine(settings.agent_database_url), store
+            config,
+            get_provider(settings),
+            make_engine(settings.agent_database_url),
+            store,
+            tracer=get_tracer(settings),
         )
 
     return build
@@ -51,5 +56,5 @@ def _pipeline(name: str) -> Callable[[Settings], Agent]:
 AGENTS: dict[str, Callable[[Settings], Agent]] = {
     "baseline": _baseline,
     "baseline-raw": _baseline_raw,  # ablation: no schema documentation
-    **{name: _pipeline(name) for name in VERSIONS},  # v2..v5, raw-fewshot
+    **{name: _pipeline(name) for name in VERSIONS},  # v2..v6, raw-fewshot
 }

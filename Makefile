@@ -31,8 +31,8 @@ SPLIT ?= test
 eval: ## Evaluate an agent (make eval AGENT=baseline SPLIT=test); costs API credits
 	uv run python -m evals.run_eval --agent $(AGENT) --split $(SPLIT)
 
-eval-all: ## Evaluate every Phase 4 version on SPLIT (default test) with the current LLM_MODEL
-	for a in baseline v2 v3 v4 v5; do uv run python -m evals.run_eval --agent $$a --split $(SPLIT) || exit 1; done
+eval-all: ## Evaluate baseline and v2-v6 on SPLIT (default test) with the current LLM_MODEL
+	for a in baseline v2 v3 v4 v5 v6; do uv run python -m evals.run_eval --agent $$a --split $(SPLIT) || exit 1; done
 
 retrieval-recall: ## Offline schema-retrieval recall@k (no LLM calls); tune k on dev
 	uv run python -m evals.retrieval_recall --split dev --ks 3 4 5 6

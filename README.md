@@ -4,8 +4,8 @@ Ask a business question in plain English and get back SQL, a result table, a pla
 explanation, and a chart. Built on the Olist Brazilian e-commerce dataset with PostgreSQL,
 pgvector, and Claude.
 
-> Status: **Phase 4 — retrieval, few-shot, self-correction and clarify/refuse, each measured.**
-> Later phases add safety, observability, the API/UI, and deployment.
+> Status: **Phase 5 — safety layer and observability (Langfuse traces, JSON logs).** Next: the
+> API/UI, then deployment.
 
 ## Quick start
 
@@ -15,8 +15,8 @@ Prerequisites: [uv](https://docs.astral.sh/uv/), Docker (Docker Desktop, OrbStac
 
 ```bash
 make setup      # install deps, create .env from .env.example
-# edit .env: set ANTHROPIC_API_KEY; change the passwords in POSTGRES_PASSWORD,
-# DATABASE_URL and AGENT_DATABASE_URL
+# edit .env: set ANTHROPIC_API_KEY; change the passwords in POSTGRES_PASSWORD, DATABASE_URL,
+# AGENT_DATABASE_URL and RAG_DATABASE_URL (keep all three URLs: the roles are created from them)
 make db-up      # start Postgres 16 + pgvector and wait until healthy
 make load-data  # load the CSVs (~10 s) and create the read-only agent role
 make build-index # embed schema docs + dev examples into pgvector (first run downloads ~130 MB model)
@@ -108,6 +108,7 @@ broken down by difficulty and category.
 | v3 | + 3 nearest dev examples (few-shot) | 100% / 0% | – | 6,344 | 0.0009 |
 | v4 | + self-correction (≤ 2 retries) | 100% / 0% | – | 6,419 | 0.0010 |
 | **v5** | **+ clarify / refuse** | 98.6% / **100%** | **100% / 100%** | 6,615 | 0.0009 / 0.031 |
+| v6 | + safety layer (Phase 5) | 98.6% / 100% | – | 6,615 | 0.0009 |
 | baseline-raw | names + types only, no docs | 79.7% / 0% | – | 1,436 | 0.0005 |
 | **raw-fewshot** | no docs + 3 dev examples | **98.6%** / 0% | – | 1,988 | 0.0005 |
 
@@ -124,12 +125,38 @@ What this shows:
   which was already at 100%. They cut input tokens (−12%), output tokens and latency instead.
   Self-correction triggered once, and hurt: it pushed a correct prose refusal into writing SQL.
 - **The 100% is this benchmark's ceiling, not proof of a perfect agent** (one author, conventions
-  partly shaped by test failures). A blind hold-out set is the next measurement. See
-  [docs/failure_analysis.md](docs/failure_analysis.md) and decision D31.
+  partly shaped by test failures). So the frozen v5 was also run once on a **blind hold-out set**
+  of 20 questions written by the project owner: **19/20 on both Opus and Haiku** (10/10
+  auto-graded, 6/7 open-ended questions graded by rubric, 3/3 refuse/clarify). The one miss is
+  the recurring "average order value" convention. See
+  [evals/results/holdout_review.md](evals/results/holdout_review.md),
+  [docs/failure_analysis.md](docs/failure_analysis.md) and decisions D31–D32.
 
 Retrieval: `make build-index` embeds table docs and dev examples locally (fastembed,
 bge-small-en-v1.5) into pgvector, read through a separate read-only role. `make retrieval-recall`
 measures schema-retrieval recall without any LLM calls (k=6: 100% on dev and test).
+
+## Safety and observability
+
+**Four safety layers** (defense in depth; each tested on its own):
+
+| Layer | Where | What it stops |
+|---|---|---|
+| Injection screen | [app/safety/injection.py](app/safety/injection.py) | "ignore previous instructions", "reveal your prompt", role switches: refused before any LLM call |
+| SQL validator (sqlglot) | [app/safety/sql_validator.py](app/safety/sql_validator.py) | anything but one SELECT; writes hidden in CTEs or `SELECT INTO`; catalogs and other schemas; `pg_*` / file / network functions. Adds a LIMIT. |
+| Executor | [app/db/executor.py](app/db/executor.py) | `READ ONLY` transaction, 15 s statement timeout, capped fetch |
+| Database role | [scripts/readonly_role.py](scripts/readonly_role.py) | `olist_agent` can only SELECT on olist, even if every layer above failed |
+
+Measured: 55 attack queries blocked ([tests/unit/test_safety.py](tests/unit/test_safety.py)),
+**0 false positives**: all 122 gold queries pass and return identical rows after validation.
+The injection screen flags 1 of 143 benchmark questions, the planted one.
+
+**Observability:** with `LANGFUSE_PUBLIC_KEY`/`LANGFUSE_SECRET_KEY` set (free tier at
+cloud.langfuse.com), every question becomes one trace: injection screen → retrieval (tables,
+scores, examples) → each LLM attempt (prompt, reply, tokens, cost) → validation → execution.
+Without keys, tracing is a no-op. Every log line is JSON with a `request_id` shared across one
+question's steps. Eval runs tag traces with `eval`, `run:<timestamp>`, the split and the version, and run
+files store each question's `trace_id`.
 
 ## Commands
 
@@ -162,7 +189,8 @@ app/
   cli.py       `python -m app.cli "question"`
   agent/       baseline.py, pipeline.py (v2–v5), versioned prompts/, SQL/abstention parsing
   retrieval/   embedder, pgvector store, FK join-path graph
-  safety/      SQL validation and guardrails (Phase 5)
+  safety/      injection screen, sqlglot validator, SafeExecutor
+  observability/  Langfuse tracer (no-op without keys), JSON logs with request IDs
   db/          connections, read-only query executor
   llm/         provider interface (base.py) + Anthropic implementation
   schema_doc.py, config.py
@@ -189,6 +217,8 @@ All settings come from environment variables (see [`.env.example`](.env.example)
 | `LLM_EFFORT` | `medium` | `low` / `medium` / `high` / `xhigh` / `max` |
 | `LLM_MAX_TOKENS` | `16000` | Output token cap per call |
 | `EMBEDDING_MODEL` | `BAAI/bge-small-en-v1.5` | Local fastembed model for retrieval |
+| `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` | — | Enable Langfuse tracing (off when unset) |
+| `LANGFUSE_BASE_URL` | `https://cloud.langfuse.com` | Langfuse host (`https://us.cloud.langfuse.com` for US region) |
 
 ## Data
 

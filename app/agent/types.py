@@ -6,7 +6,7 @@ from typing import Literal
 from app.db.executor import QueryResult
 
 # Where a failed run stopped. None means success.
-ErrorStage = Literal["llm", "extract", "execute"]
+ErrorStage = Literal["llm", "extract", "validate", "execute"]
 # A deliberate non-answer. The baseline never abstains; v5 adds this.
 Abstention = Literal["refuse", "clarify"]
 Outcome = Literal["answer", "refuse", "clarify", "error"]
@@ -41,6 +41,8 @@ class AgentResult:
     attempts: list[dict] = field(default_factory=list)
     llm_calls: list[LLMCall] = field(default_factory=list)
     total_latency_ms: float = 0.0
+    request_id: str | None = None  # same id as in the JSON logs and the trace metadata
+    trace_id: str | None = None  # Langfuse trace id (None when tracing is off)
 
     @property
     def ok(self) -> bool:

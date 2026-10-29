@@ -22,6 +22,11 @@ class Settings(BaseSettings):
     # so generated SQL can never read the index and retrieval can never read business data.
     rag_database_url: str = "postgresql+psycopg://olist_rag:change-me-three@localhost:5432/olist"
 
+    # Observability (Phase 5). Tracing is off unless both keys are set.
+    langfuse_public_key: str | None = None
+    langfuse_secret_key: SecretStr | None = None
+    langfuse_base_url: str = "https://cloud.langfuse.com"
+
     # Embeddings (Phase 4 retrieval)
     embedding_provider: Literal["fastembed"] = "fastembed"
     embedding_model: str = "BAAI/bge-small-en-v1.5"

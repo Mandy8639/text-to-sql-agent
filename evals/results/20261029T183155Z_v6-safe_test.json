@@ -1,0 +1,116 @@
+{
+  "meta": {
+    "run_at": "2026-10-29T18:31:55Z",
+    "agent": "v6",
+    "agent_version": "v6-safe",
+    "model": "claude-haiku-5-5",
+    "effort": "medium",
+    "split": "test",
+    "partial": true,
+    "workers": 4,
+    "wall_clock_s": 3.2,
+    "commit": "fd3c706-dirty",
+    "stores_rows": true,
+    "schema_doc_version": 3,
+    "tracing": "LangfuseTracer",
+    "trace_tags": [
+      "eval",
+      "run:2026-10-29T18:31:55Z",
+      "split:test",
+      "v6-safe",
+      "claude-haiku-5-5"
+    ],
+    "invalid": false
+  },
+  "metrics": {
+    "n": 1,
+    "n_answerable": 1,
+    "n_abstain_expected": 0,
+    "execution_accuracy": 100.0,
+    "overall_accuracy": 100.0,
+    "valid_sql_rate": 100.0,
+    "sql_produced_rate": 100.0,
+    "abstention_accuracy": null,
+    "false_abstention_rate": 0.0,
+    "errors_by_stage": {},
+    "n_retried": 0,
+    "retry_success_rate": null,
+    "avg_attempts": 1.0,
+    "latency_ms_p50": 3245.2323329634964,
+    "latency_ms_p95": 3245.2323329634964,
+    "avg_input_tokens": 7145,
+    "avg_output_tokens": 485,
+    "avg_cost_usd": 0.00096,
+    "total_cost_usd": 0.001,
+    "by_difficulty": {
+      "medium": {
+        "n": 1,
+        "correct": 1,
+        "accuracy": 100.0
+      }
+    },
+    "by_category": {
+      "joins": {
+        "n": 1,
+        "correct": 1,
+        "accuracy": 100.0
+      }
+    }
+  },
+  "questions": [
+    {
+      "id": "join-12",
+      "question": "What was the total revenue from customers in Minas Gerais (MG)?",
+      "category": "joins",
+      "difficulty": "medium",
+      "expected": "answer",
+      "outcome": "answer",
+      "correct": true,
+      "reason": "match",
+      "sql": "SELECT round(sum(p.payment_value), 2) AS revenue_mg\nFROM order_payments p\nJOIN orders o ON o.order_id = p.order_id\nJOIN customers c ON c.customer_id = o.customer_id\nWHERE c.customer_state = 'MG'\n  AND o.order_status NOT IN ('canceled', 'unavailable')",
+      "error": null,
+      "error_stage": null,
+      "note": "I used payment totals (the default revenue measure), excluded canceled and unavailable orders, and assigned each order to the customer's state. No period was specified, so this covers all available data.",
+      "pred_rows": 1,
+      "gold_rows": 1,
+      "input_tokens": 7145,
+      "output_tokens": 485,
+      "cost_usd": 0.000957,
+      "latency_ms": 3245.2323329634964,
+      "pred_columns": [
+        "revenue_mg"
+      ],
+      "pred_data": [
+        [
+          1843460.37
+        ]
+      ],
+      "pred_truncated": false,
+      "tables": [
+        "customers",
+        "order_payments",
+        "order_items",
+        "sellers",
+        "order_reviews",
+        "geolocation",
+        "orders"
+      ],
+      "example_ids": [
+        "ts-03",
+        "ts-12",
+        "win-17"
+      ],
+      "attempts": 1,
+      "attempt_log": [
+        {
+          "sql": "SELECT round(sum(p.payment_value), 2) AS revenue_mg\nFROM order_payments p\nJOIN orders o ON o.order_id = p.order_id\nJOIN customers c ON c.customer_id = o.customer_id\nWHERE c.customer_state = 'MG'\n  AND o.order_status NOT IN ('canceled', 'unavailable')",
+          "status": "ok",
+          "detail": null
+        }
+      ],
+      "grading": "auto",
+      "request_id": "bc7deb05c848",
+      "trace_id": "b7d3909c5debe4b6ae3b27a1781c97f9"
+    }
+  ]
+}

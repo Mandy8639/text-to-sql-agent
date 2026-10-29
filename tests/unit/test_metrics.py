@@ -92,3 +92,13 @@ def test_aggregate():
     assert m["by_difficulty"]["hard"] == {"n": 2, "correct": 0, "accuracy": 0.0}
     assert m["latency_ms_p50"] == 1000
     assert m["latency_ms_p95"] == 3000
+
+
+def test_accept_answer_counts_a_stated_definition():
+    q = Question(id="h", split="holdout", category="ambiguous", difficulty="easy",
+                 expected="clarify", question="?", reason="r", accept_answer=True)  # fmt: skip
+    res = _res(_qr([(1,)]))
+    res.note = "I defined best customers as the top 10 by total spend."
+    assert score_question(q, res, None).correct
+    res.note = None
+    assert not score_question(q, res, None).correct

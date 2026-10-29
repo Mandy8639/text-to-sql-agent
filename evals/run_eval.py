@@ -19,6 +19,7 @@ from datetime import UTC, datetime
 from app.config import get_settings
 from app.db.connection import make_engine
 from app.db.executor import QueryResult, execute_readonly
+from app.observability.tracing import trace_context
 from app.schema_doc import load_schema_doc
 from evals.agents import AGENTS, Agent
 from evals.dataset import Question, assert_no_leakage, load_split
@@ -42,8 +43,10 @@ def _git_commit() -> str:
         return "unknown"
 
 
-def _run_one(agent: Agent, q: Question, gold: QueryResult | None) -> QuestionScore:
-    res = agent.answer(q.question)
+def _run_one(agent: Agent, q: Question, gold: QueryResult | None, tags: list[str]) -> QuestionScore:
+    # Tags + question id on the trace, so eval failures can be filtered in Langfuse.
+    with trace_context(tags=tags, metadata={"question_id": q.id, "expected": q.expected}):
+        res = agent.answer(q.question)
     assert_no_leakage(example_ids=res.example_ids)  # per-question guard for few-shot agents
     score = score_question(q, res, gold)
     log.info("%-8s %-5s %s", q.id, "PASS" if score.correct else "FAIL", score.reason)
@@ -80,13 +83,17 @@ def run(
     log.info(
         "running %s on %d %s questions (%d workers)", agent.version, len(questions), split, workers
     )
+    run_at = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    tags = ["eval", f"run:{run_at}", f"split:{split}", agent.version, settings.llm_model]
     start = time.perf_counter()
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        scores = list(pool.map(lambda q: _run_one(agent, q, gold.get(q.id)), questions))
+        scores = list(pool.map(lambda q: _run_one(agent, q, gold.get(q.id), tags), questions))
     wall_s = time.perf_counter() - start
+    tracer = getattr(agent, "tracer", None)
+    if tracer is not None:
+        tracer.flush()  # traces are sent in the background; make sure they all arrive
 
     metrics = aggregate(scores)
-    run_at = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     meta = {
         "run_at": run_at,
         "agent": agent_name,
@@ -100,6 +107,8 @@ def run(
         "commit": _git_commit(),
         "stores_rows": True,
         "schema_doc_version": load_schema_doc()["version"],
+        "tracing": type(tracer).__name__ if tracer is not None else None,
+        "trace_tags": tags,
     }
     # An outage (no credit, rate limits, network) shows up as llm-stage errors. Such a run measures
     # the API, not the agent, so it is flagged and kept out of summary.md.
@@ -125,7 +134,7 @@ def run(
 def main() -> int:
     parser = argparse.ArgumentParser(description="Evaluate an agent on the benchmark.")
     parser.add_argument("--agent", default="baseline", choices=sorted(AGENTS))
-    parser.add_argument("--split", default="test", choices=["dev", "test", "all"])
+    parser.add_argument("--split", default="test", choices=["dev", "test", "holdout", "all"])
     parser.add_argument("--limit", type=int, help="only the first N questions")
     parser.add_argument("--ids", nargs="+", help="only these question ids")
     parser.add_argument("--workers", type=int, default=4, help="parallel questions")

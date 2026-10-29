@@ -77,3 +77,20 @@ def test_baseline_prompt_has_no_test_content():
     from app.agent.baseline import build_system_prompt
 
     assert_no_leakage(texts=[build_system_prompt()])
+
+
+def test_holdout_loads_and_is_protected_like_test():
+    holdout = load_split("holdout")
+    assert len(holdout) == 20 and all(q.split == "holdout" for q in holdout)
+    assert not {q.id for q in holdout} & {q.id for q in few_shot_pool()}
+    q = next(q for q in holdout if q.id == "h06")
+    with pytest.raises(LeakageError, match="h06"):
+        assert_no_leakage(texts=[f"Example: {q.question}"])
+    with pytest.raises(LeakageError, match="h06"):
+        assert_no_leakage(example_ids=["h06"])
+
+
+def test_content_shared_with_dev_is_not_flagged():
+    # h01 was written blind but matches dev flt-05 word for word; showing flt-05 is fine.
+    flt05 = next(q for q in load_split("dev") if q.id == "flt-05")
+    assert_no_leakage(texts=[flt05.question, flt05.gold_sql], example_ids=["flt-05"])

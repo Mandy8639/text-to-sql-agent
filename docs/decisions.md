@@ -416,3 +416,83 @@ A perfect score here means the benchmark has hit its ceiling, not that the agent
 The honest claims are the **relative** ones: abstention 0 → 100%, documentation vs. examples
 (80 → 99%), and cost/latency. The fix for the ceiling is a **blind hold-out set**, written by
 someone who has not seen the prompts. See failure_analysis.md, "What to try next".
+
+## D32 — Blind hold-out set: setup and result (Phase 4 → 5)
+
+- 20 questions written by the owner without seeing the prompts, stored in `evals/holdout.yaml`
+  (split `holdout`). The leakage guard protects them like test. Content that *also* exists in dev
+  is exempt from the guard: h01 turned out to match dev flt-05 word for word, which is a
+  coincidence of a blind set, not leakage.
+- Gold SQL follows A1–A8. 7 questions are open-ended (no N, free-form labels, "compare" or
+  "trend") and are graded **manually with a written rubric** (`grading: manual`); automatic
+  result-set matching would penalise legitimate answer shapes. h20 accepts either a clarifying
+  question or an answer that states its definition (`accept_answer`).
+- v5 was run **once**, frozen at fd3c706 before Phase 5 touched anything: **19/20 on both Opus and
+  Haiku** (auto 10/10, manual 6/7, abstention 3/3). Details in evals/results/holdout_review.md.
+- **The only miss, h06, repeats test join-24:** both models treat "average order value" as a sales
+  metric and exclude canceled orders, while A7 counts all statuses for averages of payments.
+  Proposal for the owner: add **A9, "average order value = revenue (A1/A2) ÷ orders, so canceled and
+  unavailable orders are excluded"**, which matches common business usage and both models.
+  Caveat: deciding this after seeing hold-out results is tuning on hold-out. If adopted, it must be
+  recorded as such, and the hold-out numbers above stay the reported ones.
+
+## D33 — Safety layer: four layers, allowlist validator, measured for false positives (Phase 5)
+
+- **Layers, outermost first:** (1) injection screen on the question, before any LLM call;
+  (2) sqlglot validator; (3) executor with a `READ ONLY` transaction, statement timeout and capped fetch;
+  (4) the `olist_agent` role, which can only SELECT on olist. Each layer is tested alone. The role was
+  tested in Phase 1 without any validator in front of it.
+- **Validator = allowlist, not blocklist:** exactly one statement; the root must be SELECT or a set
+  operation; no write, DDL, permission, session, locking or utility node *anywhere in the tree*
+  (catches `WITH d AS (DELETE … RETURNING *) SELECT …`, `SELECT … INTO`, `FOR UPDATE`); tables
+  must be olist tables or the query's own CTEs, which rejects `pg_catalog`, `information_schema`,
+  other schemas, and unqualified `pg_user` (pg_catalog is always on the search path, so names
+  must be checked, not just schemas); no `pg_*`, `lo_*`, `dblink*`, config or XML-export
+  functions. Anything sqlglot cannot model (DO, SET ROLE, EXPLAIN ANALYZE, VACUUM, CALL) parses
+  as a generic `Command` and is rejected.
+- **Auto LIMIT:** the outermost query gets `LIMIT max_rows + 1` (added, or lowered if higher), so the
+  database stops early and `truncated` stays exact. The timeout (15 s) stays per transaction.
+- **False positives measured, not assumed:** all 122 gold queries (dev, test, hold-out) pass the
+  validator, and the *re-rendered* SQL returns exactly the same rows as the original. sqlglot
+  re-renders the query to add the LIMIT, and this test proves that never changes meaning.
+  Attack suite: 55 malicious inputs blocked (stacked statements, comment tricks, hidden DML in
+  CTEs, catalogs, file/network functions, COPY TO PROGRAM, DO blocks…).
+- **Injection screen is deliberately narrow:** it flags only attempts to override or reveal
+  instructions or switch roles. On the 143 benchmark questions it flags exactly one, ref-04, the
+  planted injection. Destructive *requests* ("delete all canceled orders") are left to the v5
+  REFUSE rule, because a keyword list would refuse "how many orders were canceled?". Flagged
+  questions are refused before retrieval or any LLM call (zero cost, nothing reaches the model).
+- **Known limits:** regex screening misses paraphrases and other languages (hence 4 layers);
+  query results are not fed back to the LLM today, but Phase 6 explanations will read result
+  rows, which are untrusted data (review comments are customer-written), so that prompt must
+  treat them as data. Postgres error text in retry feedback is truncated to the first line.
+- **v6 = v5 + safety** (one config flag; unit-tested as the only difference). Haiku, test split:
+  98.6% execution / 100% abstention, the same as v5. The only safety event was ref-04. The one miss
+  (ts-19) is the model's own `ORDER BY … DESC` with NULLs first, the same trap the gold SQL
+  originally had. Executing the raw and the validated SQL gives identical rows.
+
+## D34 — Observability: Langfuse traces, JSON logs with a request ID (Phase 5)
+
+- **One trace per question** with typed child observations: `injection_screen` (guardrail),
+  `retrieval` (retriever: tables + scores, join-path tables, example ids + scores),
+  `llm attempt N` (generation: full prompt, reply, tokens, cost), `validate` (guardrail: allowed
+  or the block reason, LIMIT added), `execute` (row count, columns, ms, or the Postgres error). The trace
+  output holds the outcome, SQL, rows, error stage and attempts.
+- **Never sent:** result rows (only counts and column names). Traces leave the machine.
+- **Behind a `Tracer` interface:** `LangfuseTracer` (Langfuse v5, OpenTelemetry-based:
+  `start_as_current_observation(as_type=…)` + `propagate_attributes`), `NoopTracer` when keys are
+  missing (the default; tests and CLI unchanged), `RecordingTracer` for unit tests, which assert the
+  exact observation tree. The SDK was read from the installed v5 package, not from memory: its API
+  differs from v2/v3.
+- **Request ID:** set per question by `request_scope()` (a context variable), so every JSON log line
+  (`request.start`, `retrieval.done`, `llm.call`, `sql.blocked|error|executed`, `request.end`) for one
+  question shares it. It is stored on the result, in the trace metadata and in eval run files.
+- **Eval tagging:** each eval question is traced with tags `eval`, `run:<timestamp>`, `split:<s>`,
+  agent version and model, plus metadata `question_id` and `expected`. Run files store each
+  question's `trace_id`, so a failure in summary.md leads straight to its trace. `trace_context()`
+  carries tags without changing the agent API, and the tracer is flushed at the end of each run.
+- **Verified live** (Langfuse Cloud, 2026-10-29): traces arrive with the full tree, per-generation
+  tokens and cost (e.g. 6,660 in / 598 out, $0.000965, matching app/llm/pricing.py) and the eval tags.
+  **Finding:** Langfuse v5 also exported the Anthropic SDK's own OpenTelemetry span
+  (`anthropic.messages.create`), which duplicated every LLM call and would double-count cost in
+  dashboards. The client now exports only Langfuse-created spans (`should_export_span=is_langfuse_span`).

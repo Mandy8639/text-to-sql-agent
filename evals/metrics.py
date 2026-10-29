@@ -44,6 +44,9 @@ class QuestionScore:
     example_ids: list[str] | None = None
     attempts: int = 1
     attempt_log: list[dict] | None = None
+    grading: str = "auto"  # manual: verdict comes from the rubric review, not `correct`
+    request_id: str | None = None  # matches the JSON log lines for this question
+    trace_id: str | None = None  # open in Langfuse (None when tracing is off)
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -88,6 +91,8 @@ def score_question(q: Question, res: AgentResult, gold: QueryResult | None) -> Q
         # Either form of abstention counts; the exact form is recorded in `outcome`.
         correct = res.outcome in ("refuse", "clarify")
         reason = f"expected {q.expected}, got {res.outcome}"
+        if not correct and q.accept_answer and res.outcome == "answer" and res.note:
+            correct, reason = True, "answered with a stated definition (accepted)"
 
     model = res.llm_calls[0].model if res.llm_calls else ""
     return QuestionScore(
@@ -117,6 +122,9 @@ def score_question(q: Question, res: AgentResult, gold: QueryResult | None) -> Q
         tables=res.tables or None,
         example_ids=res.example_ids or None,
         attempts=max(1, len(res.attempts)),
+        grading=q.grading,
+        request_id=res.request_id,
+        trace_id=res.trace_id,
         attempt_log=res.attempts or None,
     )
 

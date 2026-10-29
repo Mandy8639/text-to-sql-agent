@@ -15,7 +15,7 @@ from evals.dataset import load_split
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--split", default="all", choices=["all", "dev", "test"])
+    parser.add_argument("--split", default="all", choices=["all", "dev", "test", "holdout"])
     parser.add_argument("--show", type=int, default=3, help="rows to print per query")
     args = parser.parse_args()
 

@@ -52,6 +52,8 @@ def _row(meta: dict, m: dict) -> str:
         for k in ("latency_ms_p50", "latency_ms_p95")
     }
     note = "rescored" if meta.get("rescored_from") else ""
+    if meta.get("split") == "holdout":
+        note = "auto score only; rubric verdicts (19/20) in holdout_review.md"
     return (
         f"| {meta['run_at'][:16].replace('T', ' ')} | {meta['agent_version']} | {meta['model']} | "
         f"v{meta.get('schema_doc_version', 1)} | {meta['split']} | {m['n']} | **{_fmt(m['execution_accuracy'])}** | {acc['easy']} | "
