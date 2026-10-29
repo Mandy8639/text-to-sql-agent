@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help setup db-up db-down db-reset load-data profile-data test test-unit lint format run-api run-ui
+.PHONY: help setup db-up db-down db-reset load-data profile-data eval validate-gold test test-unit lint format run-api run-ui
 
 help: ## List available commands
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-10s %s\n", $$1, $$2}'
@@ -22,6 +22,14 @@ load-data: ## (Re)load the Olist CSVs from data/raw/ and create the read-only ag
 
 profile-data: ## Print the data profile (row counts, date ranges, null rates) as Markdown
 	uv run python -m scripts.profile_data
+
+AGENT ?= baseline
+SPLIT ?= test
+eval: ## Evaluate an agent (make eval AGENT=baseline SPLIT=test); costs API credits
+	uv run python -m evals.run_eval --agent $(AGENT) --split $(SPLIT)
+
+validate-gold: ## Run every gold query in evals/questions.yaml and show its result
+	uv run python -m evals.validate_gold
 
 test: ## Run all tests (integration/LLM tests skip if services or keys are missing)
 	uv run pytest

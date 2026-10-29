@@ -7,6 +7,9 @@ from app.db.executor import QueryResult
 
 # Where a failed run stopped. None means success.
 ErrorStage = Literal["llm", "extract", "execute"]
+# A deliberate non-answer. The baseline never abstains; v5 adds this.
+Abstention = Literal["refuse", "clarify"]
+Outcome = Literal["answer", "refuse", "clarify", "error"]
 
 
 @dataclass
@@ -31,12 +34,20 @@ class AgentResult:
     error_stage: ErrorStage | None = None
     note: str | None = None  # the model's prose outside the SQL (assumptions, caveats)
     raw_reply: str | None = None  # the model's full text, for debugging
+    abstention: Abstention | None = None  # set when the agent refuses or asks to clarify
+    example_ids: list[str] = field(default_factory=list)  # benchmark ids used as examples
     llm_calls: list[LLMCall] = field(default_factory=list)
     total_latency_ms: float = 0.0
 
     @property
     def ok(self) -> bool:
         return self.error is None
+
+    @property
+    def outcome(self) -> Outcome:
+        if self.abstention:
+            return self.abstention
+        return "answer" if self.ok and self.result is not None else "error"
 
     @property
     def input_tokens(self) -> int:

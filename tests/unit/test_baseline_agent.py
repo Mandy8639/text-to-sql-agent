@@ -87,3 +87,18 @@ def test_system_prompt_contains_full_schema():
 
 def test_system_prompt_is_deterministic():
     assert build_system_prompt() == build_system_prompt()
+
+
+def test_bare_schema_prompt_has_names_but_no_documentation():
+    from app.agent.baseline import BareSchemaBaselineAgent
+
+    agent = BareSchemaBaselineAgent(FakeLLM("```sql\nSELECT 1\n```"), _executor())
+    assert agent.version == "baseline-raw-v1"
+    doc = load_schema_doc()
+    for table, spec in doc["tables"].items():
+        assert f"### {table}" in agent.system_prompt
+        for column in spec["columns"]:
+            assert column in agent.system_prompt
+    assert "Business rules" not in agent.system_prompt
+    assert "customer_unique_id identifies the person" not in agent.system_prompt
+    assert len(agent.system_prompt) < len(build_system_prompt()) / 3

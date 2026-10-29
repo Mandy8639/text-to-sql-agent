@@ -182,3 +182,92 @@ A running record of design choices, the alternatives considered, and why. Newest
 - Destructive request ("delete all canceled orders"): it writes a SELECT listing the rows
   instead of a DELETE. Safe (and the DB would reject a DELETE anyway), but not a refusal.
 - Both should count as **wrong** on refusal-type benchmark questions, and are the target of v5.
+
+## D19 — Benchmark design (Phase 3)
+
+- 94 questions: 80 answerable with gold SQL, 10 to refuse (4 destructive incl. one prompt
+  injection, 5 unanswerable from this data, 1 privilege request), 4 to clarify (too vague).
+  Every category appears in both splits. The split is fixed in the YAML (not random at run time),
+  so it is reviewable and stable.
+- **Gold SQL follows written conventions** (top of questions.yaml, mirroring A1–A6). Without
+  them, two correct people would write different gold SQL and the score would measure
+  disagreement, not the agent.
+- **Minimal gold columns:** "which ..." questions return only the identifying column, so an
+  agent that also shows the measure isn't penalised, while one that picks the wrong entities is.
+- Every gold query runs under the agent's read-only role (`make validate-gold`), and every
+  ranking question was checked for **ties at the LIMIT boundary**, which would make more than one
+  answer correct. None were found.
+
+## D20 — Leakage guard (Phase 3)
+
+- Rule: test questions never reach a prompt. Enforced in code, not by convention:
+  `few_shot_pool()` is the only sanctioned example source and returns dev only;
+  `assert_no_leakage()` scans prompt text for any test question (whitespace/case-insensitive)
+  and any distinctive test gold SQL, and rejects test ids used as examples. The harness runs it
+  on each agent's system prompt before a run and on each result's `example_ids` during the run.
+- It caught a real problem on its first run: test `ts-02`'s gold SQL appeared verbatim inside dev
+  `win-04` (the running-total CTE *is* the monthly count). A few-shot example would have handed
+  over the answer, so the two questions' splits were swapped. Short gold SQL
+  (< 80 chars, e.g. `select count(*) as orders from orders`) is not searched for, because it
+  occurs inside many legitimate queries.
+
+## D21 — Scoring: result-set match with explicit tolerances (Phase 3)
+
+- **Options:** exact SQL string match (penalises any rephrasing), exact result match (penalises
+  harmless differences like column names, an extra count column, `2017-11` vs `2017-11-01`), or
+  tolerant result match.
+- **Pick:** tolerant result-set match, with every tolerance written down and unit-tested in
+  both directions (should match / must not match). Gold columns are mapped to predicted columns
+  by value, then whole rows are checked, so values paired with the wrong entity still fail. The
+  relative tolerance is tight (1e-6), so including canceled orders in a 16M total fails.
+- Percent vs. fraction (97.02 vs 0.9702) deliberately does **not** match. Questions that want a
+  percentage say so.
+
+## D22 — Harness: stored rows, rescoring, regenerated summary (Phase 3)
+
+- Each run file stores the agent's result rows (up to 200), so a run can be **re-scored for free**
+  after a gold fix (`evals/rescore.py`) instead of paying for a re-run.
+- `summary.md` is **rebuilt** from all run files (not appended), with metrics recomputed from the
+  per-question records, so changing a metric definition updates every past row consistently.
+- Metric definitions: execution accuracy = answerable questions only; difficulty breakdown =
+  answerable only (abstention has its own metric); category breakdown = every question.
+- 4 questions run in parallel. Latency is still measured per question, though concurrency can
+  inflate p95 a little. Valid-SQL rate and errors by stage show *where* failures happen.
+
+## D23 — Finding: the answerable benchmark is nearly saturated (Phase 3)
+
+- Baseline (full schema doc, one call): **Opus 5.5 96.4%, Haiku 5.5 98.2%** execution accuracy
+  on the 56 answerable test questions. Two Opus runs were identical. Opus's two misses are
+  arguable gold-SQL choices (flt-08 rows vs. distinct reviews; join-10 status filter on freight),
+  not clear agent errors.
+- Why: the questions are mostly one-step business queries, and schema.yaml's business rules
+  answer the usual traps (revenue definition, `customer_unique_id`, fan-out) up front.
+- Consequence: Phase 4 accuracy gains would be unmeasurable on this set (1 question ≈ 1.8 pts).
+  The remaining measurable gap is **abstention: 0/10 for both models**. The model often refuses
+  *in prose* but still emits SQL, because the baseline has no channel to refuse or clarify.
+- Haiku matches Opus at about 1/34 of the cost, which makes model choice a real Phase 4 experiment.
+
+## D24 — Hardening the benchmark (Phase 3)
+
+- After D23, 30 questions were added (18 answerable test, 7 dev, 5 abstention), targeting
+  places where plausible SQL is wrong: join fan-out (payments × items), `customer_id` vs. people,
+  NULLs (`<>` drops NULL rows; `DESC` sorts NULL first), "paid entirely by" (`bool_and`), cohorts
+  and retention windows, percent-of-total inside groups, and period-over-period comparisons.
+- Writing them caught a NULL bug in my own gold SQL (ts-19: `ORDER BY rev_2017 DESC` put a
+  category with **no** 2017 sales first). Every gold query is executed and inspected for exactly
+  this reason.
+- Result: **Opus 5.5 solved all 18 new hard questions** (97.3% overall); Haiku 5.5 94.6%. Harder
+  questions did not create headroom in the documented setup.
+
+## D25 — Documentation ablation: where the headroom actually is (Phase 3)
+
+- `baseline-raw-v1` = the same pipeline with only table names, column types, keys and joins
+  (what `information_schema` offers): Haiku drops **94.6% → 79.7%** (hard 96.7% → 73.3%).
+  11 of the 15 extra misses are revenue questions: without the A1/A2 conventions, the model
+  can't know that revenue means payments on non-canceled orders.
+- Interpretation: on this data, accuracy is limited by **missing business context**, not by
+  SQL skill. That is also the common real-world situation (undocumented warehouses).
+- Implication for Phase 4: measure retrieval and few-shot both in the **documented** setup
+  (effect on cost, latency, abstention) and in a **sparse-documentation** setup, where there is
+  about 15 points of accuracy to recover. Model choice (Haiku is about 33× cheaper than Opus at
+  similar accuracy) is also a real lever.

@@ -41,6 +41,22 @@ def _render_table(name: str, spec: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def render_bare_schema(doc: dict[str, Any]) -> str:
+    """Only what a database catalog would tell you: tables, column types, keys and joins.
+
+    Used for the documentation ablation (baseline-raw): no descriptions, examples, business
+    rules or conventions, roughly what an undocumented company warehouse offers.
+    """
+    lines = [f"## Tables (PostgreSQL schema `{doc['schema']}`)"]
+    for name, spec in doc["tables"].items():
+        cols = ", ".join(f"{c} {s['type']}" for c, s in spec["columns"].items())
+        lines.append(f"\n### {name}\nPrimary key: ({', '.join(spec['primary_key'])})")
+        lines.append(f"Columns: {cols}")
+        for rel in spec["relationships"]:
+            lines.append(f"Join: {name}.{rel['column']} -> {rel['references']}")
+    return "\n".join(lines)
+
+
 def render_schema(doc: dict[str, Any]) -> str:
     """Render the full schema doc: dataset summary, all tables, business rules, conventions."""
     sections = [

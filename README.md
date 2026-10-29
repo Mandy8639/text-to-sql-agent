@@ -4,7 +4,7 @@ Ask a business question in plain English and get back SQL, a result table, a pla
 explanation, and a chart. Built on the Olist Brazilian e-commerce dataset with PostgreSQL,
 pgvector, and Claude.
 
-> Status: **Phase 2 — baseline agent works end to end.** Later phases add the eval benchmark,
+> Status: **Phase 3 — evaluation benchmark and harness, baseline measured.** Later phases add
 > retrieval and self-correction, safety, observability, the API/UI, and deployment.
 
 ## Quick start
@@ -65,57 +65,58 @@ How the baseline works ([app/agent/baseline.py](app/agent/baseline.py)):
    `execute`), never raised, so the eval harness can count them.
 
 It is deliberately naive: no retrieval, no examples, no retries, and no way to refuse a
-question. Phase 3 measures it.
+question.
 
-## Commands
+## Evaluation
 
-| Command          | What it does                                               |
-| ---------------- | ---------------------------------------------------------- |
-| `make setup`     | `uv sync` and create `.env` if missing                     |
-| `make db-up`     | Start Postgres + pgvector (waits for the healthcheck)      |
-| `make db-down`   | Stop Postgres (keeps data)                                 |
-| `make db-reset`  | Stop Postgres and delete its data volume                   |
-| `make load-data` | (Re)load CSVs into the `olist` schema; create agent role   |
-| `make profile-data` | Print the data profile below as Markdown                |
-| `make test`      | All tests; DB/LLM smoke tests skip if unavailable          |
-| `make test-unit` | Only tests that need no services or API key                |
-| `make lint`      | ruff lint + format check                                   |
-| `make format`    | Auto-fix lint issues and format                            |
-| `make run-api`   | FastAPI server *(Phase 6)*                                 |
-| `make run-ui`    | Streamlit UI *(Phase 6)*                                   |
-
-## Project layout
-
-```
-app/
-  cli.py       `python -m app.cli "question"`
-  agent/       agents (baseline.py), versioned prompts/, SQL extraction, schema rendering
-  retrieval/   schema + few-shot retrieval
-  safety/      SQL validation and guardrails
-  db/          connections, read-only query executor
-  llm/         provider interface (base.py) + Anthropic implementation
-  config.py    typed settings from environment / .env
-api/           FastAPI
-ui/            Streamlit
-evals/         benchmark questions, harness, results
-scripts/       data loading, indexing
-tests/         unit/ (no services) and integration/ (Postgres, LLM)
-docs/          architecture and decisions log
-docker/        Postgres init scripts
+```bash
+make eval AGENT=baseline SPLIT=test     # ~$2 on Opus 5.5, ~$0.06 on Haiku 5.5
+LLM_MODEL=claude-haiku-5-5 make eval    # any model via env var
+make validate-gold                      # run every gold query and show its result
+uv run python -m evals.rescore evals/results/<run>.json   # re-grade a run after fixing gold SQL, no API cost
 ```
 
-## Configuration
+**Benchmark** ([evals/questions.yaml](evals/questions.yaml)): 123 business questions, 105 with
+gold SQL, each tagged with difficulty and category, plus 18 that should be refused
+(destructive, prompt injection, unanswerable from this data) or clarified (too vague).
+The split is 35 dev / 88 test. 30 questions were added after the first baseline saturated the
+original set: cohorts, join fan-out traps, NULL handling, percent-of-total, period
+comparisons. Test questions can never reach a prompt: `few_shot_pool()` returns dev questions
+only, and the harness runs `assert_no_leakage()` on every agent's prompt and on every example
+it uses.
 
-All settings come from environment variables (see [`.env.example`](.env.example)):
+| | aggregation | filtering | joins | time series | window fns | ambiguous | refusal |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| questions | 21 | 19 | 24 | 19 | 18 | 10 | 12 |
 
-| Variable            | Default            | Purpose                                     |
-| ------------------- | ------------------ | ------------------------------------------- |
-| `DATABASE_URL`      | local admin URL    | Admin connection for scripts only           |
-| `AGENT_DATABASE_URL`| local agent URL    | Read-only role the agent must use           |
-| `ANTHROPIC_API_KEY` | —                  | Claude API key                              |
-| `LLM_MODEL`         | `claude-opus-5-5`  | Model ID                                    |
-| `LLM_EFFORT`        | `medium`           | `low` / `medium` / `high` / `xhigh` / `max` |
-| `LLM_MAX_TOKENS`    | `16000`            | Output token cap per call                   |
+**Scoring** ([evals/compare.py](evals/compare.py)): execution accuracy compares *result sets*,
+not SQL text. Column names and order are ignored, and extra columns are allowed. Row order is
+ignored unless the question asks for a ranking. Numbers match within 0.01, `2017-11` equals
+2017-11-01, and intervals are compared in days. Refusal questions are correct only if the
+agent does not answer. Each run also records valid-SQL rate, p50/p95 latency, tokens and cost,
+broken down by difficulty and category.
+
+**Baseline results** (88 test questions, 74 answerable; full history in
+[evals/results/summary.md](evals/results/summary.md)):
+
+| Agent | Schema in prompt | Model | Exec acc | Hard | Abstain acc | p50 | $ / question |
+|---|---|---|---:|---:|---:|---:|---:|
+| baseline-v1 | full schema.yaml (6.2k tokens) | claude-opus-5-5 | **97.3%** | 100% | 0% | 3.9 s | $0.0325 |
+| baseline-v1 | full schema.yaml | claude-haiku-5-5 | **94.6%** | 96.7% | 0% | 3.4 s | $0.0010 |
+| baseline-raw-v1 | names, types, keys only (1.4k) | claude-haiku-5-5 | **79.7%** | 73.3% | 0% | 2.8 s | $0.0005 |
+
+What this shows:
+
+- **Documentation is worth about 15 points.** With schema.yaml's descriptions and business rules,
+  even Haiku answers almost everything. Without them, it misses mostly questions whose answer
+  depends on a company definition ("revenue" = payments on non-canceled orders), which no
+  model can guess.
+- **The documented setup leaves little headroom**: Opus solved all 30 hard questions. The
+  remaining misses are about *when* the sales status filter applies.
+- **Abstention is 0% everywhere.** The model often refuses in prose ("I can't drop tables") but
+  still returns a substitute SELECT, because the baseline has no way to refuse.
+
+See decisions D23–D25 in [docs/decisions.md](docs/decisions.md).
 
 ## Data
 

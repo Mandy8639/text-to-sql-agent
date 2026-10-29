@@ -10,7 +10,7 @@ from collections.abc import Callable
 from sqlalchemy import Engine
 
 from app.agent.prompts import load_prompt
-from app.agent.schema_render import render_schema
+from app.agent.schema_render import render_bare_schema, render_schema
 from app.agent.sql_extract import SQLExtractionError, extract_note, extract_sql
 from app.agent.types import AgentResult, LLMCall
 from app.db.executor import QueryExecutionError, QueryResult, execute_readonly
@@ -30,6 +30,12 @@ def build_system_prompt() -> str:
     return template.substitute(schema=render_schema(load_schema_doc()))
 
 
+def build_bare_system_prompt() -> str:
+    """Ablation prompt: same instructions, but only table/column/key names and types."""
+    template = load_prompt("baseline_raw", 1)
+    return template.substitute(schema=render_bare_schema(load_schema_doc()))
+
+
 class BaselineAgent:
     """Answers a question with one LLM call and one query, and reports where any failure was."""
 
@@ -39,7 +45,10 @@ class BaselineAgent:
         # `execute` is injected so tests can run the agent without a database.
         self.llm = llm
         self.execute = execute
-        self.system_prompt = build_system_prompt()
+        self.system_prompt = self._build_prompt()
+
+    def _build_prompt(self) -> str:
+        return build_system_prompt()
 
     @classmethod
     def from_engine(cls, llm: LLMProvider, agent_engine: Engine, **exec_kwargs) -> "BaselineAgent":
@@ -67,3 +76,16 @@ class BaselineAgent:
             out.error, out.error_stage = exc.message, "execute"
         out.total_latency_ms = (time.perf_counter() - start) * 1000
         return out
+
+
+class BareSchemaBaselineAgent(BaselineAgent):
+    """Documentation ablation: the baseline pipeline with an undocumented schema.
+
+    Measures how much of the baseline's accuracy comes from schema.yaml's descriptions and
+    business rules rather than from the model.
+    """
+
+    version = "baseline-raw-v1"
+
+    def _build_prompt(self) -> str:
+        return build_bare_system_prompt()
