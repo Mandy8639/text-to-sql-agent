@@ -4,8 +4,8 @@ Ask a business question in plain English and get back SQL, a result table, a pla
 explanation, and a chart. Built on the Olist Brazilian e-commerce dataset with PostgreSQL,
 pgvector, and Claude.
 
-> Status: **Phase 1 — data loaded and documented.** Later phases add the agent, the eval
-> benchmark, safety, observability, the API/UI, and deployment.
+> Status: **Phase 2 — baseline agent works end to end.** Later phases add the eval benchmark,
+> retrieval and self-correction, safety, observability, the API/UI, and deployment.
 
 ## Quick start
 
@@ -20,7 +20,52 @@ make setup      # install deps, create .env from .env.example
 make db-up      # start Postgres 16 + pgvector and wait until healthy
 make load-data  # load the CSVs (~10 s) and create the read-only agent role
 make test       # run tests
+uv run python -m app.cli "Which 5 states have the most unique customers?"
 ```
+
+## Asking questions (baseline agent)
+
+```
+$ uv run python -m app.cli "What were the top 5 product categories by revenue in 2017?"
+SQL:
+SELECT
+    COALESCE(p.product_category_name_english, 'unknown') AS category,
+    ROUND(SUM(oi.price), 2) AS revenue
+FROM order_items oi
+JOIN orders o ON o.order_id = oi.order_id
+JOIN products p ON p.product_id = oi.product_id
+WHERE o.order_status NOT IN ('canceled', 'unavailable')
+  AND o.order_purchase_timestamp >= '2017-01-01'
+  AND o.order_purchase_timestamp < '2018-01-01'
+GROUP BY COALESCE(p.product_category_name_english, 'unknown')
+ORDER BY revenue DESC
+LIMIT 5
+
+category              | revenue
+----------------------+-----------
+bed_bath_table        | 497,970.94
+watches_gifts         | 486,519.02
+health_beauty         | 481,142.73
+sports_leisure        | 447,546.59
+computers_accessories | 400,490.61
+(5 of 5 rows shown)
+
+[baseline-v1 | claude-opus-5-5 | 6,234 in / 303 out tokens | $0.0310 | 3.5s]
+```
+
+How the baseline works ([app/agent/baseline.py](app/agent/baseline.py)):
+
+1. **Prompt:** the versioned template [prompts/baseline_v1.md](app/agent/prompts/baseline_v1.md)
+   plus the *entire* [schema.yaml](docs/schema.yaml), rendered as text (about 6.2k tokens).
+2. **Generate:** one Claude call returns a ```` ```sql ```` block and an optional note.
+3. **Extract:** [sql_extract.py](app/agent/sql_extract.py) pulls the SQL out of the reply.
+4. **Execute:** [executor.py](app/db/executor.py) runs it as the read-only `olist_agent` role
+   in a `READ ONLY` transaction with a 15 s timeout, fetching at most 1,000 rows.
+5. **Report:** failures are returned with the stage they happened at (`llm`, `extract` or
+   `execute`), never raised, so the eval harness can count them.
+
+It is deliberately naive: no retrieval, no examples, no retries, and no way to refuse a
+question. Phase 3 measures it.
 
 ## Commands
 
@@ -43,10 +88,11 @@ make test       # run tests
 
 ```
 app/
-  agent/       orchestration, prompts, self-correction loop
+  cli.py       `python -m app.cli "question"`
+  agent/       agents (baseline.py), versioned prompts/, SQL extraction, schema rendering
   retrieval/   schema + few-shot retrieval
   safety/      SQL validation and guardrails
-  db/          connections, execution
+  db/          connections, read-only query executor
   llm/         provider interface (base.py) + Anthropic implementation
   config.py    typed settings from environment / .env
 api/           FastAPI

@@ -5,7 +5,7 @@
 # tests/integration/test_schema_doc.py: every table and column here must exist with this type,
 # and every column in the database must be documented here.
 #
-# Items marked "(CONFIRM)" are assumptions listed under `ambiguities` at the bottom.
+# The `ambiguities` at the bottom were reviewed and the assumptions confirmed (2026-10-29).
 
 version: 1
 dialect: postgresql
@@ -14,7 +14,7 @@ dataset: >
   Olist Brazilian E-Commerce Public Dataset (Kaggle). About 99k orders placed on the Olist
   marketplace between September 2016 and October 2018. Olist connects small sellers to large
   Brazilian marketplaces; each order can contain items from several sellers. Money is in
-  Brazilian reais (BRL). Timestamps are Brazilian local time without a time zone (CONFIRM).
+  Brazilian reais (BRL). Timestamps are Brazilian local time without a time zone.
 
 business_notes:
   - topic: time_analysis
@@ -29,7 +29,7 @@ business_notes:
       artificial spikes and collapses. Q3 2018 contains only two real months (Jul, Aug).
   - topic: revenue
     note: >
-      Two different revenue measures exist (CONFIRM which is default).
+      Two different revenue measures exist; the default depends on the breakdown (see A1).
       (1) Payments: SUM(order_payments.payment_value). What customers actually paid, including
       freight and credit-card installment interest. Order-level only.
       (2) Item sales: SUM(order_items.price) (optionally + freight_value). Product value sold,
@@ -41,7 +41,7 @@ business_notes:
     note: >
       order_status values: delivered (96,478), shipped (1,107), canceled (625),
       unavailable (609), invoiced (314), processing (301), created (5), approved (2).
-      For sales/revenue questions, exclude 'canceled' and 'unavailable' orders (CONFIRM).
+      For sales/revenue questions, exclude 'canceled' and 'unavailable' orders.
       For delivery-time questions use only 'delivered' orders with a non-null
       order_delivered_customer_date.
   - topic: customers_vs_people

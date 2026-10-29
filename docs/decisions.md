@@ -131,3 +131,54 @@ A running record of design choices, the alternatives considered, and why. Newest
   `business_notes`, because most text-to-SQL errors are about meaning, not syntax. Open questions
   are listed under `ambiguities` with the current assumption, so gold SQL in Phase 3 can be
   consistent.
+
+## D14 — Baseline prompt: full schema doc, including business rules (Phase 2)
+
+- The baseline sends all of schema.yaml (about 6.2k tokens), rendered as compact text, on every
+  question. "Naive" here means no retrieval, few-shot examples or retries. It does not mean a
+  bad prompt: the business rules (revenue definition, status filters, data coverage) are part of
+  the schema doc, so they are included. This makes later gains attributable to the techniques
+  themselves, not to a deliberately weak starting point.
+- Rendering is deterministic (byte-identical prompt for every question), which keeps runs
+  reproducible and makes prompt caching possible later. Caching is deferred: it changes cost,
+  not accuracy. At about $0.03 per question it is not worth the extra pricing logic yet.
+
+## D15 — Prompts are versioned files, never edited after use (Phase 2)
+
+- `app/agent/prompts/<name>_v<N>.md`, loaded with `string.Template` (`$schema`), because SQL is
+  full of `{}` that would break `str.format`. The agent version string (`baseline-v1`) includes
+  the prompt version, and eval results will record it, so every score maps to the exact prompt
+  text that produced it. A prompt change means a new file and a new version.
+
+## D16 — SQL extraction: first fenced block, bare-SELECT fallback (Phase 2)
+
+- The prompt asks for one ```` ```sql ```` block; the extractor takes the first fenced block (any
+  or no language tag), or the whole reply if it starts with SELECT/WITH. It does **not** try to
+  validate or split statements; that is the safety layer's job (Phase 5). Prose outside the
+  block is kept as a `note`, because the model uses it to state assumptions and caveats
+  (e.g. "September 2018 is incomplete").
+- Considered: structured outputs / tool use to force a JSON `{sql, note}` reply. That is more
+  robust, but adds a moving part to the baseline; we can measure it later as its own step
+  if extraction failures show up in evals.
+
+## D17 — Executor: per-transaction READ ONLY + timeout, capped fetch, errors as values (Phase 2)
+
+- Every query runs in a transaction that starts with `SET TRANSACTION READ ONLY` and
+  `SET LOCAL statement_timeout`, and is always rolled back. This applies the D12 lesson: never
+  trust session state on a pooled connection. A test tampers with a pooled connection and
+  proves the next query is still read-only.
+- Fetches at most `max_rows + 1` rows, so a huge result can't exhaust memory, and reports
+  `truncated`. Phase 5 adds an automatic LIMIT in the SQL itself.
+- Postgres errors become `QueryExecutionError(message, sqlstate)`, with only the first line of
+  the server message (e.g. `column "x" does not exist`). That is useful for self-correction in
+  Phase 4 and leaks no connection details.
+- The agent returns failures in `AgentResult.error_stage` instead of raising, so the eval
+  harness can count *where* the pipeline breaks (`llm` / `extract` / `execute`).
+
+## D18 — Observed baseline behaviour to measure in Phase 3 (Phase 2)
+
+- Unanswerable question ("profit margin per seller"): the model explains in its note that
+  there is no cost data, but still returns substitute SQL. No refusal path exists yet.
+- Destructive request ("delete all canceled orders"): it writes a SELECT listing the rows
+  instead of a DELETE. Safe (and the DB would reject a DELETE anyway), but not a refusal.
+- Both should count as **wrong** on refusal-type benchmark questions, and are the target of v5.
