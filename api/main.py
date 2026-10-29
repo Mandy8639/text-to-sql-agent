@@ -24,9 +24,16 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import text
 
 from app.config import Settings, get_settings
+from app.db.connection import make_engine
 from app.observability.logs import configure_logging, log_event, new_request_id
 from app.schema_doc import load_schema_doc
 from app.service import QueryService
+from app.spend import (
+    BudgetExceeded,
+    InMemorySpendStore,
+    PostgresSpendStore,
+    SpendGuard,
+)
 
 # --- request / response models ---------------------------------------------------------------
 
@@ -109,10 +116,32 @@ class RateLimiter:
 # --- app ---------------------------------------------------------------------------------------
 
 
+def client_key(request: Request, trusted_proxies: list[str]) -> str:
+    """The client to rate-limit. Proxy headers are believed only from trusted peers: the UI
+    (same container) forwards the visitor's IP as X-Client-IP; a reverse proxy sets
+    X-Forwarded-For. A direct caller can't spoof its key by sending these headers."""
+    peer = request.client.host if request.client else "unknown"
+    if peer in trusted_proxies:
+        forwarded = request.headers.get("x-client-ip") or request.headers.get("x-forwarded-for")
+        if forwarded:
+            return forwarded.split(",")[0].strip()
+    return peer
+
+
+def _spend_guard(settings: Settings) -> SpendGuard:
+    store = (
+        PostgresSpendStore(make_engine(settings.app_database_url))
+        if settings.app_database_url
+        else InMemorySpendStore()
+    )
+    return SpendGuard(store, settings.daily_budget_usd)
+
+
 def create_app(
     service_factory: Callable[[], QueryService] | None = None,
     settings: Settings | None = None,
     health_check: Callable[[QueryService], dict] | None = None,
+    spend_guard: SpendGuard | None = None,
 ) -> FastAPI:
     settings = settings or get_settings()
     state: dict[str, Any] = {}
@@ -131,19 +160,25 @@ def create_app(
         description="Ask the Olist e-commerce database questions in plain English.",
     )
     limiter = RateLimiter(settings.api_rate_limit_per_minute)
+    global_limiter = RateLimiter(settings.api_global_rate_limit_per_minute)
+    guard = spend_guard or _spend_guard(settings)
 
     def service() -> QueryService:
         return state["service"]
 
     def rate_limited(request: Request) -> None:
-        client = request.client.host if request.client else "unknown"
-        retry_after = limiter.check(client)
-        if retry_after is not None:
-            raise HTTPException(
-                429,
-                detail=f"Rate limit: {limiter.per_minute} questions per minute.",
-                headers={"Retry-After": str(int(retry_after) + 1)},
-            )
+        client = client_key(request, settings.api_trusted_proxies)
+        for lim, key, scope in (
+            (limiter, client, "per visitor"),
+            (global_limiter, "*", "in total"),
+        ):
+            retry_after = lim.check(key)
+            if retry_after is not None:
+                raise HTTPException(
+                    429,
+                    detail=f"Rate limit: {lim.per_minute} questions per minute {scope}.",
+                    headers={"Retry-After": str(int(retry_after) + 1)},
+                )
 
     @app.exception_handler(Exception)
     async def unexpected(request: Request, exc: Exception) -> JSONResponse:
@@ -154,7 +189,13 @@ def create_app(
 
     @app.post("/query", response_model=QueryResponseModel, dependencies=[Depends(rate_limited)])
     def query(body: QueryRequest, svc: QueryService = Depends(service)) -> dict:
-        return asdict(svc.ask(body.question))
+        try:
+            guard.check()
+        except BudgetExceeded as exc:
+            raise HTTPException(503, detail=str(exc)) from exc
+        response = svc.ask(body.question)
+        guard.record(response.cost_usd)
+        return asdict(response)
 
     @app.post("/feedback", status_code=204)
     def feedback(body: FeedbackRequest, svc: QueryService = Depends(service)) -> None:

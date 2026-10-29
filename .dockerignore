@@ -1,0 +1,13 @@
+# Never send secrets, data, local environments or caches into an image build.
+.env
+.env.*
+!.env.example
+.venv/
+.cache/
+data/
+.git/
+.pytest_cache/
+.ruff_cache/
+**/__pycache__/
+evals/results/
+.DS_Store

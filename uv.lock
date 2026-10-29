@@ -2426,7 +2426,6 @@ dependencies = [
     { name = "pyyaml" },
     { name = "sqlalchemy" },
     { name = "sqlglot" },
-    { name = "streamlit" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
@@ -2434,6 +2433,10 @@ dependencies = [
 dev = [
     { name = "pytest" },
     { name = "ruff" },
+]
+ui = [
+    { name = "httpx" },
+    { name = "streamlit" },
 ]
 
 [package.metadata]
@@ -2449,7 +2452,6 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "sqlalchemy", specifier = ">=2.0" },
     { name = "sqlglot", specifier = ">=30.25.0" },
-    { name = "streamlit", specifier = ">=1.66.1" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.54.0" },
 ]
 
@@ -2457,6 +2459,10 @@ requires-dist = [
 dev = [
     { name = "pytest", specifier = ">=8.3" },
     { name = "ruff", specifier = ">=0.8" },
+]
+ui = [
+    { name = "httpx", specifier = ">=0.28.1" },
+    { name = "streamlit", specifier = ">=1.66.1" },
 ]
 
 [[package]]

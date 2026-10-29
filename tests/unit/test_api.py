@@ -119,3 +119,73 @@ def test_schema_lists_documented_tables():
         "orders" in body["tables"]
         and "order_purchase_timestamp" in body["tables"]["orders"]["columns"]
     )
+
+
+# --- cost protection (Phase 7) ----------------------------------------------------------------
+
+from app.spend import BudgetExceeded, InMemorySpendStore, SpendGuard  # noqa: E402
+
+
+def test_spend_guard_blocks_at_cap_and_records_cost():
+    guard = SpendGuard(InMemorySpendStore(), daily_cap_usd=0.01)
+    guard.check()
+    guard.record(0.006)
+    guard.check()
+    guard.record(0.006)
+    with pytest.raises(BudgetExceeded):
+        guard.check()
+    SpendGuard(InMemorySpendStore(), daily_cap_usd=0).check()  # 0 disables the cap
+
+
+def test_query_returns_503_when_daily_budget_is_spent():
+    guard = SpendGuard(InMemorySpendStore(), daily_cap_usd=0.0015)
+    settings = Settings(_env_file=None, api_rate_limit_per_minute=100)
+    app = create_app(lambda: FakeService(), settings, health_check=lambda s: {}, spend_guard=guard)
+    with TestClient(app) as c:
+        first = c.post("/query", json={"question": "How many orders?"})  # costs 0.001
+        second = c.post("/query", json={"question": "How many orders?"})  # 0.002 total
+        third = c.post("/query", json={"question": "How many orders?"})
+    assert (first.status_code, second.status_code, third.status_code) == (200, 200, 503)
+    assert "daily budget" in third.json()["detail"]
+
+
+def test_global_limit_applies_across_clients():
+    settings = Settings(
+        _env_file=None, api_rate_limit_per_minute=100, api_global_rate_limit_per_minute=2
+    )
+    app = create_app(lambda: FakeService(), settings, health_check=lambda s: {},
+                     spend_guard=SpendGuard(InMemorySpendStore(), 0))  # fmt: skip
+    with TestClient(app) as c:
+        codes = [
+            c.post(
+                "/query",
+                json={"question": "How many orders?"},
+                headers={"X-Client-IP": f"10.0.0.{i}"},
+            ).status_code
+            for i in range(3)
+        ]
+    assert codes == [200, 200, 429]
+
+
+def test_client_key_trusts_forwarded_ip_only_from_trusted_proxies():
+    from starlette.requests import Request
+
+    from api.main import client_key
+
+    def req(peer, headers):
+        scope = {
+            "type": "http",
+            "client": (peer, 1234),
+            "headers": [(k.lower().encode(), v.encode()) for k, v in headers.items()],
+        }
+        return Request(scope)
+
+    trusted = ["127.0.0.1"]
+    assert client_key(req("127.0.0.1", {"X-Client-IP": "203.0.113.7"}), trusted) == "203.0.113.7"
+    assert (
+        client_key(req("127.0.0.1", {"X-Forwarded-For": "198.51.100.1, 10.0.0.1"}), trusted)
+        == "198.51.100.1"
+    )
+    assert (
+        client_key(req("198.51.100.9", {"X-Client-IP": "1.2.3.4"}), trusted) == "198.51.100.9"
+    )  # spoof ignored

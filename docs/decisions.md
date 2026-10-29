@@ -540,3 +540,29 @@ someone who has not seen the prompts. See failure_analysis.md, "What to try next
 - **Recommendation:** build it as a v7 with a query-rewriting step ("rewrite the follow-up as a
   standalone question", then the normal pipeline), plus ~15 two-turn benchmark questions,
   only if the demo needs it. Left out for now: the owner decides.
+
+## D37 — Deployment on free tiers, with cost protection (Phase 7)
+
+- **Hosting:** Neon (Postgres + pgvector, 0.5 GB free; data is 153 MB) and a Hugging Face Docker
+  Space (free CPU, 16 GB RAM) running API + UI in one container. Render and Koyeb free tiers
+  have 512 MB, too tight for the embedding model plus Streamlit; Fly.io and Railway are no longer
+  free. Tradeoff: cold starts after idle periods. Options compared in docs/deployment.md.
+- **Only the UI is public.** The API listens on 127.0.0.1 inside the container. The deployed app gets
+  only the three least-privilege database URLs; the admin URL is used once, from a laptop, to load data.
+- **Cost protection, in layers:** Haiku for the demo (about $0.001/question), a per-visitor rate limit,
+  a global rate limit, and a **daily spend cap stored in Postgres** (`app.spend_daily`, written by
+  `olist_app`, which can touch only that table), so a restart can't reset the budget. The
+  Anthropic console's monthly limit is the last backstop. Per-visitor limiting survives the
+  shared container because the UI forwards the visitor IP, which the API trusts only from localhost.
+- **Images:** non-root uid 1000, the embedding model baked in, the API image without Streamlit and the UI
+  image without the agent (`ui` dependency group). Two fixes found by measuring: uv's download cache
+  and a recursive `chown` layer had doubled every image. Creating the user first, `COPY --chown`
+  and `UV_NO_CACHE=1` took API 1.83 → 0.86 GB and UI 1.97 → 0.87 GB.
+- **Local hardening found on the way:** Postgres was published on 0.0.0.0 since Phase 0, and Streamlit
+  listens on every interface and sends usage statistics by default. All are now localhost-only,
+  with telemetry off.
+- **CI** (GitHub Actions): lint, format check, and the 300 unit tests (safety suite included) on every
+  push. Verified beforehand in a clean copy with no `.env`, database or model cache.
+  Integration tests need the loaded data (CSVs are not in the repo) and run locally.
+- **Verified before deploying:** the exact Space image, run locally with the demo settings, answered
+  in the browser as non-root, with only port 7860 published, and recorded its cost in the spend table.

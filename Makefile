@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help setup db-up db-down db-reset load-data build-index profile-data eval eval-all retrieval-recall validate-gold test test-unit lint format run-api run-ui
+.PHONY: help setup setup-app-db bootstrap stack-up stack-down space-image db-up db-down db-reset load-data build-index profile-data eval eval-all retrieval-recall validate-gold test test-unit lint format run-api run-ui
 
 help: ## List available commands
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-17s %s\n", $$1, $$2}'
@@ -19,6 +19,21 @@ db-reset: ## Stop Postgres AND delete its data volume
 
 load-data: ## (Re)load the Olist CSVs from data/raw/ and create the read-only agent role
 	uv run python -m scripts.load_data
+
+setup-app-db: ## Create the demo spend-counter table and its write-only role (APP_DATABASE_URL)
+	uv run python -m scripts.app_state
+
+bootstrap: ## Load data, build the index, create the spend table: everything a fresh DB needs
+	$(MAKE) load-data build-index setup-app-db
+
+stack-up: ## Build and start db + api + ui in Docker (http://127.0.0.1:8501); run bootstrap once first
+	docker compose --profile app up -d --build --wait
+
+stack-down: ## Stop the full Docker stack (keeps the data volume)
+	docker compose --profile app down
+
+space-image: ## Build the Hugging Face Space image locally (API + UI in one container)
+	docker build -f docker/space.Dockerfile -t text2sql-space .
 
 build-index: ## (Re)build the pgvector retrieval index (schema chunks + dev examples)
 	uv run python -m scripts.build_index

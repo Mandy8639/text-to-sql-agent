@@ -31,9 +31,20 @@ st.set_page_config(page_title="Text-to-SQL Analytics", page_icon="📊", layout=
 # --- API calls ---------------------------------------------------------------------------------
 
 
+def visitor_ip() -> str | None:
+    """The visitor's IP, forwarded to the API so its per-visitor rate limit works when the UI
+    and API share a container (the API only trusts this header from localhost)."""
+    ip = getattr(st.context, "ip_address", None)
+    if ip:
+        return ip
+    forwarded = st.context.headers.get("X-Forwarded-For")
+    return forwarded.split(",")[0].strip() if forwarded else None
+
+
 def call_api(method: str, path: str, **kwargs) -> httpx.Response | None:
+    headers = {"X-Client-IP": ip} if (ip := visitor_ip()) else {}
     try:
-        return httpx.request(method, f"{API_URL}{path}", timeout=120, **kwargs)
+        return httpx.request(method, f"{API_URL}{path}", timeout=120, headers=headers, **kwargs)
     except httpx.HTTPError:
         st.error(f"Can't reach the API at {API_URL}. Start it with `make run-api`.")
         return None
@@ -52,7 +63,7 @@ def health() -> dict | None:
 with st.sidebar:
     st.header("Try an example")
     for ex in EXAMPLES:
-        if st.button(ex, use_container_width=True):
+        if st.button(ex, width="stretch"):
             st.session_state.question = ex
             st.session_state.run = True
     st.divider()
@@ -91,7 +102,7 @@ if submitted or st.session_state.pop("run", False):
         if resp is not None:
             if resp.status_code == 200:
                 st.session_state.result = resp.json()
-            elif resp.status_code == 429:
+            elif resp.status_code in (429, 503):  # rate limit / daily demo budget
                 st.warning(resp.json().get("detail", "Too many questions; wait a minute."))
             elif resp.status_code == 422:
                 st.warning("That question couldn't be accepted (too short, too long, or invalid).")
@@ -133,7 +144,7 @@ if r:
                 st.line_chart(plot, x=chart["x"], y=chart["y"])
             else:  # keep the query's ORDER BY (a top-N ranking), not alphabetical order
                 st.bar_chart(plot, x=chart["x"], y=chart["y"], sort=False)
-        st.dataframe(df, use_container_width=True, hide_index=True)
+        st.dataframe(df, width="stretch", hide_index=True)
         if r["truncated"]:
             st.caption(f"Showing the first {len(r['rows'])} rows.")
 

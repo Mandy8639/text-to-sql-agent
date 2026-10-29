@@ -25,3 +25,6 @@ data/processed/
 
 # Local model caches (embedding weights)
 .cache/
+
+# Personal notes (interview prep) - not part of the project
+notes/

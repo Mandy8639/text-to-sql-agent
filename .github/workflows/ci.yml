@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Lint, unit and safety tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.12.15"
+          enable-cache: true
+
+      - name: Install dependencies (from the lockfile)
+        run: uv sync --frozen
+
+      - name: Lint
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+
+      # Unit tests need no database, API key or embedding model. They include the SQL safety
+      # suite (55 attacks), the leakage guard, scoring, the pipeline, the API and the UI logic.
+      - name: Unit + safety tests
+        run: uv run pytest -m "not integration and not llm" -q
+
+      # Integration tests need the loaded Olist database (the CSVs aren't in the repo, by
+      # design), so they run locally with `make test`; they skip cleanly here.

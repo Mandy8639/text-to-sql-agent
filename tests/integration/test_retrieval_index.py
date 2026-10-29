@@ -58,3 +58,35 @@ def test_rag_role_cannot_read_business_data_or_write(rag_engine):
 def test_agent_role_cannot_read_the_index(agent_engine, rag_engine):
     with agent_engine.connect() as conn, pytest.raises(DBAPIError):
         conn.execute(text("SELECT count(*) FROM rag.examples"))
+
+
+# --- demo spend counter (Phase 7) -------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def app_engine():
+    url = get_settings().app_database_url
+    if not url:
+        pytest.skip("APP_DATABASE_URL not set (run `make setup-app-db`)")
+    engine = make_engine(url, connect_timeout_s=3)
+    yield engine
+    engine.dispose()
+
+
+def test_spend_store_adds_atomically(app_engine):
+    from app.spend import PostgresSpendStore
+
+    store = PostgresSpendStore(app_engine)
+    before = store.spent_today()
+    store.add(0.000123)
+    store.add(0.000077)
+    assert store.spent_today() == pytest.approx(before + 0.0002, abs=1e-6)
+
+
+def test_app_role_can_write_only_the_counter(app_engine):
+    with app_engine.connect() as conn, pytest.raises(DBAPIError):
+        conn.execute(text("SELECT count(*) FROM olist.orders"))
+    with app_engine.connect() as conn, pytest.raises(DBAPIError):
+        conn.execute(text("DROP TABLE app.spend_daily"))
+    with app_engine.connect() as conn, pytest.raises(DBAPIError):
+        conn.execute(text("SELECT count(*) FROM rag.examples"))
