@@ -69,3 +69,65 @@ A running record of design choices, the alternatives considered, and why. Newest
 - ruff for both linting and formatting (one tool, fast).
 - Dependencies are added in the phase that first uses them (sqlglot, FastAPI, Streamlit, Langfuse
   come later), so every dependency in `pyproject.toml` is actually exercised.
+
+## D8 — Load pattern: COPY into all-TEXT staging, then transform in SQL (Phase 1)
+
+- **Options:** pandas `read_csv` + `to_sql`; COPY straight into typed tables; COPY into TEXT
+  staging, then `INSERT ... SELECT` with casts (ELT).
+- **Pick:** ELT. `COPY` is the fastest way into Postgres (full load about 8 s), loading as TEXT
+  means a bad value can never abort the copy, and every cleaning rule is one readable SQL
+  statement in `scripts/sql/olist_schema.sql`. No pandas dependency.
+- The whole load (staging, transform, role grants) is **one transaction**. If any step fails,
+  the previous `olist` schema is untouched. Re-running rebuilds from the CSVs, so the load is
+  reproducible.
+- Constraints (PK/FK/CHECK) are declared in the DDL, so bad data fails loudly at load time
+  instead of producing quietly wrong answers later.
+
+## D9 — Keep original column names, fix only typos (Phase 1)
+
+- Renaming everything (e.g. `order_purchase_timestamp` → `purchased_at`) would read nicer, but
+  the original names are documented across Kaggle and are familiar to LLMs, which helps SQL
+  generation. Only `product_name_lenght` / `product_description_lenght` were renamed.
+
+## D10 — Collapse geolocation to one row per zip prefix (Phase 1)
+
+- The raw table (1M rows, ~53 points per prefix) has no key, and joining it to customers
+  multiplies rows: an inflated SUM that *looks* plausible, the worst kind of bug for an
+  analytics agent. One row per prefix (mean in-Brazil coordinates, most common unaccented city
+  and state) makes the join safe. The cost is that point-level detail is lost; no analytics
+  question here needs it.
+- Customer/seller → geolocation is documented as a relationship but **not** enforced as a FK,
+  because 278 customer and 7 seller prefixes have no geolocation row.
+
+## D11 — English category denormalized onto products (Phase 1)
+
+- Saves the agent a join it would otherwise need in almost every category question. The
+  translation table is kept for completeness. The 2 categories missing from the translation
+  file were added (`pc_gamer`, `portable_kitchen_and_food_preparers`), so the FK holds.
+- NULL categories stay NULL (not `'unknown'`) to be honest about missing data. schema.yaml tells
+  the agent how to report them.
+
+## D12 — Read-only agent role, with privileges as the real guard (Phase 1)
+
+- `olist_agent`: SELECT on `olist` only; `REVOKE ALL ON DATABASE ... FROM PUBLIC` removes the
+  default CREATE/TEMP rights; `REVOKE ALL ON SCHEMA public FROM PUBLIC`; NOSUPERUSER etc.; role
+  defaults `default_transaction_read_only = on`, `statement_timeout = 30s`, `search_path = olist`.
+- **Lesson from testing:** `default_transaction_read_only` is only a default. Any session can
+  run `SET SESSION CHARACTERISTICS AS TRANSACTION READ WRITE`. The test proves writes still fail
+  with `insufficient_privilege` (42501), because **privileges** are what actually stop them. The
+  same test showed that a pooled connection keeps such session changes when it is reused, so the
+  Phase 5 executor will start every transaction with `SET TRANSACTION READ ONLY` and its own
+  timeout, rather than trusting the session.
+- Not yet blocked: reading system catalogs (`pg_catalog`, `information_schema`) is allowed for
+  every Postgres role. Phase 5's SQL validator blocks those queries.
+- The role's password comes from `AGENT_DATABASE_URL`, so `.env` is the single source of truth.
+
+## D13 — schema.yaml is tested against the database (Phase 1)
+
+- Documentation that drifts from the schema silently degrades the agent's prompts. Tests check
+  that every DB column is documented (and vice versa), with matching types, nullability and row
+  counts, and that every column has a description and examples.
+- Business rules (revenue definition, status filters, join fan-out, data coverage) live in
+  `business_notes`, because most text-to-SQL errors are about meaning, not syntax. Open questions
+  are listed under `ambiguities` with the current assumption, so gold SQL in Phase 3 can be
+  consistent.

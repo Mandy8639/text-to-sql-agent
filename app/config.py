@@ -14,8 +14,10 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
-    # Database (admin connection, used by scripts; the agent gets a read-only role in Phase 1)
+    # Admin connection: scripts only (data loading, indexing).
     database_url: str = "postgresql+psycopg://olist_admin:change-me@localhost:5432/olist"
+    # Read-only connection: the ONLY one the agent may use.
+    agent_database_url: str = "postgresql+psycopg://olist_agent:change-me-too@localhost:5432/olist"
 
     # LLM
     llm_provider: Literal["anthropic"] = "anthropic"

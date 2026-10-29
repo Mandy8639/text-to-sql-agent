@@ -1,0 +1,461 @@
+# Schema documentation for the `olist` PostgreSQL schema.
+#
+# This file is the single source of truth the agent uses to understand the data (Phase 2 puts it
+# in the prompt; Phase 4 embeds it for retrieval). It is checked against the live database by
+# tests/integration/test_schema_doc.py: every table and column here must exist with this type,
+# and every column in the database must be documented here.
+#
+# Items marked "(CONFIRM)" are assumptions listed under `ambiguities` at the bottom.
+
+version: 1
+dialect: postgresql
+schema: olist
+dataset: >
+  Olist Brazilian E-Commerce Public Dataset (Kaggle). About 99k orders placed on the Olist
+  marketplace between September 2016 and October 2018. Olist connects small sellers to large
+  Brazilian marketplaces; each order can contain items from several sellers. Money is in
+  Brazilian reais (BRL). Timestamps are Brazilian local time without a time zone (CONFIRM).
+
+business_notes:
+  - topic: time_analysis
+    note: >
+      Use orders.order_purchase_timestamp for "when did it happen" questions (sales by month,
+      trends, quarters). Other timestamps describe fulfilment steps.
+  - topic: data_coverage
+    note: >
+      Reliable monthly data runs from 2017-01 to 2018-08. 2016 is sparse (Sep: 4 orders,
+      Oct: 324, Nov: 0, Dec: 1) and the feed effectively ends in 2018-08: 2018-09 has 16 orders
+      and 2018-10 has 4. Month-over-month comparisons that include 2016 or 2018-09/10 will show
+      artificial spikes and collapses. Q3 2018 contains only two real months (Jul, Aug).
+  - topic: revenue
+    note: >
+      Two different revenue measures exist (CONFIRM which is default).
+      (1) Payments: SUM(order_payments.payment_value). What customers actually paid, including
+      freight and credit-card installment interest. Order-level only.
+      (2) Item sales: SUM(order_items.price) (optionally + freight_value). Product value sold,
+      available per product, category and seller.
+      Any revenue question broken down by product, category or seller MUST use order_items,
+      because payments cannot be split across items. Totals: payments 16.01M, price 13.59M,
+      price + freight 15.84M.
+  - topic: order_status_filter
+    note: >
+      order_status values: delivered (96,478), shipped (1,107), canceled (625),
+      unavailable (609), invoiced (314), processing (301), created (5), approved (2).
+      For sales/revenue questions, exclude 'canceled' and 'unavailable' orders (CONFIRM).
+      For delivery-time questions use only 'delivered' orders with a non-null
+      order_delivered_customer_date.
+  - topic: customers_vs_people
+    note: >
+      customers.customer_id is created per ORDER (1:1 with orders). To count distinct people or
+      repeat buyers use customers.customer_unique_id. 96,096 unique people; only 2,997 bought
+      more than once.
+  - topic: quantity
+    note: >
+      There is no quantity column. Each order_items row is one unit; order_item_id numbers the
+      units within an order (1..n). Units sold = COUNT(*) of order_items rows.
+  - topic: average_order_value
+    note: >
+      Average order value = total revenue / COUNT(DISTINCT order_id). Do not average over
+      order_items or order_payments rows, which have several rows per order.
+  - topic: join_fanout
+    note: >
+      An order has 1..n items, 1..n payments and 0..n reviews. Joining orders to two of these
+      tables at once multiplies rows (e.g. items x payments) and inflates sums. Aggregate each
+      child table per order_id in a subquery/CTE first, then join.
+  - topic: delivery_time
+    note: >
+      Delivery time (days) = order_delivered_customer_date - order_purchase_timestamp.
+      Late delivery = order_delivered_customer_date > order_estimated_delivery_date
+      (7,827 of 96,476 delivered orders, about 8%).
+  - topic: geography
+    note: >
+      Use customers.customer_state / sellers.seller_state for regional questions; states are
+      2-letter codes (SP = Sao Paulo, RJ = Rio de Janeiro, MG = Minas Gerais, ...). City names
+      are lower-case and mostly unaccented in customers, but seller_city is messy (free text such
+      as "sao paulo / sao paulo", "sbc/sp"). The geolocation table is only for coordinates.
+  - topic: categories
+    note: >
+      Use products.product_category_name_english for category names in answers. 610 products
+      (1.9%) have no category (NULL); report them as "unknown" rather than dropping silently.
+
+tables:
+
+  orders:
+    description: One row per order, with its status and fulfilment timestamps.
+    grain: one row per order
+    primary_key: [order_id]
+    row_count: 99441
+    relationships:
+      - column: customer_id
+        references: customers.customer_id
+        cardinality: one-to-one
+    columns:
+      order_id:
+        type: TEXT
+        description: Unique order identifier (32-char hex hash).
+        examples: [e481f51cbdc54678b7cc49136f2d6af7]
+      customer_id:
+        type: TEXT
+        description: Order-level customer key. Unique per order; join to customers for location and customer_unique_id.
+        examples: [9ef432eb6251297304e76186b10a928d]
+      order_status:
+        type: TEXT
+        description: Current status of the order.
+        allowed_values: [delivered, shipped, canceled, unavailable, invoiced, processing, created, approved]
+        examples: [delivered, canceled]
+      order_purchase_timestamp:
+        type: TIMESTAMP
+        description: When the customer placed the order. THE column for time-based analysis.
+        examples: ["2017-10-02 10:56:33"]
+      order_approved_at:
+        type: TIMESTAMP
+        description: When payment was approved. NULL for 160 orders (mostly canceled or created).
+        nullable: true
+        examples: ["2017-10-02 11:07:15"]
+      order_delivered_carrier_date:
+        type: TIMESTAMP
+        description: When the seller handed the order to the logistics carrier. NULL if not shipped yet. 166 rows are earlier than the purchase time (data quality issue in the source).
+        nullable: true
+        examples: ["2017-10-04 19:55:00"]
+      order_delivered_customer_date:
+        type: TIMESTAMP
+        description: When the customer received the order. NULL if not delivered (and for 8 orders marked delivered).
+        nullable: true
+        examples: ["2017-10-10 21:25:13"]
+      order_estimated_delivery_date:
+        type: TIMESTAMP
+        description: Delivery date promised to the customer at purchase (always midnight).
+        examples: ["2017-10-18 00:00:00"]
+
+  order_items:
+    description: Items in each order. One row per unit sold, with its price and freight.
+    grain: one row per unit within an order
+    primary_key: [order_id, order_item_id]
+    row_count: 112650
+    relationships:
+      - column: order_id
+        references: orders.order_id
+        cardinality: many-to-one
+      - column: product_id
+        references: products.product_id
+        cardinality: many-to-one
+      - column: seller_id
+        references: sellers.seller_id
+        cardinality: many-to-one
+    notes: >
+      775 orders (mostly unavailable/canceled) have no items. Average 1.14 units per order, max
+      21. 1,278 orders contain items from more than one seller.
+    columns:
+      order_id:
+        type: TEXT
+        description: The order this unit belongs to.
+        examples: [00010242fe8c5a6d1ba2dd792cb16214]
+      order_item_id:
+        type: INTEGER
+        description: Sequence number of the unit within its order (1, 2, 3, ...). Not a product id and not a quantity.
+        examples: [1, 2]
+      product_id:
+        type: TEXT
+        description: The product sold.
+        examples: [4244733e06e7ecb4970a6e2683c13e61]
+      seller_id:
+        type: TEXT
+        description: The seller who fulfilled this unit.
+        examples: [48436dade18ac8b2bce089ec2a041202]
+      shipping_limit_date:
+        type: TIMESTAMP
+        description: Deadline for the seller to hand the unit to the carrier. A few values are far in the future (up to 2020) in the source data.
+        examples: ["2017-09-19 09:45:35"]
+      price:
+        type: NUMERIC(10,2)
+        description: Price of this unit in BRL, excluding freight.
+        examples: [58.90, 239.90]
+      freight_value:
+        type: NUMERIC(10,2)
+        description: Freight charged for this unit in BRL (an order's freight is split across its units). 0 for 383 units.
+        examples: [13.29, 19.93]
+
+  order_payments:
+    description: Payments for each order. An order can be paid with several methods (e.g. a voucher plus a credit card).
+    grain: one row per payment method used on an order
+    primary_key: [order_id, payment_sequential]
+    row_count: 103886
+    relationships:
+      - column: order_id
+        references: orders.order_id
+        cardinality: many-to-one
+    notes: >
+      2,961 orders have more than one payment row. One order has no payment. payment_value can
+      exceed price + freight when card installments carry interest.
+    columns:
+      order_id:
+        type: TEXT
+        description: The order being paid.
+        examples: [b81ef226f3fe1789b1e8b2acac839d17]
+      payment_sequential:
+        type: INTEGER
+        description: Sequence number of the payment within the order (1..29).
+        examples: [1, 2]
+      payment_type:
+        type: TEXT
+        description: Payment method. boleto is a Brazilian bank slip paid in cash or online. not_defined appears on 3 rows with value 0.
+        allowed_values: [credit_card, boleto, voucher, debit_card, not_defined]
+        examples: [credit_card, boleto]
+      payment_installments:
+        type: INTEGER
+        description: Number of installments the customer chose (1 = paid at once; up to 24). 0 on 2 rows (data quality issue).
+        examples: [1, 8]
+      payment_value:
+        type: NUMERIC(10,2)
+        description: Amount paid with this method, in BRL.
+        examples: [99.33, 24.39]
+
+  order_reviews:
+    description: Customer satisfaction surveys sent after delivery (or the estimated delivery date).
+    grain: one row per (review, order) pair
+    primary_key: [review_id, order_id]
+    row_count: 99224
+    relationships:
+      - column: order_id
+        references: orders.order_id
+        cardinality: many-to-one
+    notes: >
+      review_id is not unique on its own (789 reviews cover several orders) and 547 orders have
+      several reviews. 768 orders have no review. Average score is 4.09; 58% of reviews are 5.
+      Comments are written in Portuguese.
+    columns:
+      review_id:
+        type: TEXT
+        description: Review identifier. Not unique on its own.
+        examples: [8670d52e15e00043ae7de4c01cc2fe06]
+      order_id:
+        type: TEXT
+        description: The order being reviewed.
+        examples: [b9bf720beb4ab3728760088589c62129]
+      review_score:
+        type: SMALLINT
+        description: Satisfaction score from 1 (worst) to 5 (best).
+        allowed_values: [1, 2, 3, 4, 5]
+        examples: [5, 1]
+      review_comment_title:
+        type: TEXT
+        description: Optional comment title in Portuguese. NULL for 88% of reviews.
+        nullable: true
+        examples: [recomendo, Super recomendo]
+      review_comment_message:
+        type: TEXT
+        description: Optional comment text in Portuguese. NULL for 59% of reviews.
+        nullable: true
+        examples: ["Vendedor confiável, produto ok e entrega antes do prazo."]
+      review_creation_date:
+        type: TIMESTAMP
+        description: When the survey was sent to the customer (almost always midnight).
+        examples: ["2018-05-22 00:00:00"]
+      review_answer_timestamp:
+        type: TIMESTAMP
+        description: When the customer answered the survey.
+        examples: ["2018-05-23 16:45:47"]
+
+  customers:
+    description: Customer location for each order. customer_id is per order; customer_unique_id identifies the person.
+    grain: one row per order-level customer id
+    primary_key: [customer_id]
+    row_count: 99441
+    relationships:
+      - column: customer_id
+        references: orders.customer_id
+        cardinality: one-to-one
+      - column: customer_zip_code_prefix
+        references: geolocation.geolocation_zip_code_prefix
+        cardinality: many-to-one
+        note: Not enforced; 278 customer prefixes have no geolocation row. Use a LEFT JOIN.
+    columns:
+      customer_id:
+        type: TEXT
+        description: Key used by orders.customer_id. One per order, so COUNT(DISTINCT customer_id) counts orders, not people.
+        examples: [06b8999e2fba1a1fbc88172c00ba8bc7]
+      customer_unique_id:
+        type: TEXT
+        description: Identifies the person across orders. Use for unique-customer and repeat-purchase questions.
+        examples: [861eff4711a542e4b93843c6dd7febb0]
+      customer_zip_code_prefix:
+        type: CHAR(5)
+        description: First 5 digits of the customer's zip code, kept as text to preserve leading zeros.
+        examples: ["14409", "09790"]
+      customer_city:
+        type: TEXT
+        description: Customer city, lower-case, mostly without accents.
+        examples: [franca, sao bernardo do campo]
+      customer_state:
+        type: CHAR(2)
+        description: Two-letter Brazilian state code. 27 states; SP has 42% of customers.
+        examples: [SP, RJ, MG]
+
+  sellers:
+    description: Marketplace sellers and their location.
+    grain: one row per seller
+    primary_key: [seller_id]
+    row_count: 3095
+    relationships:
+      - column: seller_zip_code_prefix
+        references: geolocation.geolocation_zip_code_prefix
+        cardinality: many-to-one
+        note: Not enforced; 7 seller prefixes have no geolocation row. Use a LEFT JOIN.
+    columns:
+      seller_id:
+        type: TEXT
+        description: Unique seller identifier.
+        examples: [3442f8959a84dea7ee197c632cb2df15]
+      seller_zip_code_prefix:
+        type: CHAR(5)
+        description: First 5 digits of the seller's zip code.
+        examples: ["13023"]
+      seller_city:
+        type: TEXT
+        description: Seller city as typed by the seller. Messy free text (e.g. "sao paulo / sao paulo", "sbc/sp"); prefer seller_state for grouping.
+        examples: [campinas, mogi guacu]
+      seller_state:
+        type: CHAR(2)
+        description: Two-letter Brazilian state code.
+        examples: [SP, PR]
+
+  products:
+    description: Product catalog, with the English category name already joined in.
+    grain: one row per product
+    primary_key: [product_id]
+    row_count: 32951
+    relationships:
+      - column: product_category_name
+        references: category_translation.product_category_name
+        cardinality: many-to-one
+    notes: >
+      There are no product names or descriptions, only their lengths. 73 categories; the top
+      categories by sales are health_beauty, watches_gifts, bed_bath_table, sports_leisure.
+    columns:
+      product_id:
+        type: TEXT
+        description: Unique product identifier.
+        examples: [1e9e8ef04dbcff4541ed26657ea517e5]
+      product_category_name:
+        type: TEXT
+        description: Category name in Portuguese. NULL for 610 products.
+        nullable: true
+        examples: [perfumaria, artes]
+      product_category_name_english:
+        type: TEXT
+        description: Category name in English (snake_case). Use this one in answers. NULL when the category is unknown.
+        nullable: true
+        examples: [perfumery, art, health_beauty]
+      product_name_length:
+        type: INTEGER
+        description: Number of characters in the product name (the name itself is not in the data).
+        nullable: true
+        examples: [40, 44]
+      product_description_length:
+        type: INTEGER
+        description: Number of characters in the product description.
+        nullable: true
+        examples: [287, 276]
+      product_photos_qty:
+        type: INTEGER
+        description: Number of product photos published.
+        nullable: true
+        examples: [1, 4]
+      product_weight_g:
+        type: INTEGER
+        description: Weight in grams. 0 for 4 products (data quality issue).
+        nullable: true
+        examples: [225, 1000]
+      product_length_cm:
+        type: INTEGER
+        description: Package length in centimetres.
+        nullable: true
+        examples: [16, 30]
+      product_height_cm:
+        type: INTEGER
+        description: Package height in centimetres.
+        nullable: true
+        examples: [10, 18]
+      product_width_cm:
+        type: INTEGER
+        description: Package width in centimetres.
+        nullable: true
+        examples: [14, 20]
+
+  geolocation:
+    description: >
+      Approximate coordinates for each 5-digit zip prefix. Cleaned at load time: the raw file has
+      1M rows (many points per prefix); we keep one row per prefix with mean coordinates (points
+      outside Brazil dropped) and the most common city and state.
+    grain: one row per zip code prefix
+    primary_key: [geolocation_zip_code_prefix]
+    row_count: 19015
+    relationships: []
+    columns:
+      geolocation_zip_code_prefix:
+        type: CHAR(5)
+        description: 5-digit zip prefix. Join from customers.customer_zip_code_prefix or sellers.seller_zip_code_prefix.
+        examples: ["01001"]
+      geolocation_lat:
+        type: DOUBLE PRECISION
+        description: Mean latitude of the prefix. NULL for 5 prefixes whose only points were outside Brazil.
+        nullable: true
+        examples: [-23.5502]
+      geolocation_lng:
+        type: DOUBLE PRECISION
+        description: Mean longitude of the prefix.
+        nullable: true
+        examples: [-46.6340]
+      geolocation_city:
+        type: TEXT
+        description: Most common city name for the prefix, lower-case without accents.
+        examples: [sao paulo]
+      geolocation_state:
+        type: CHAR(2)
+        description: Most common state code for the prefix.
+        examples: [SP]
+
+  category_translation:
+    description: Portuguese to English product category names. Rarely needed, since products already has the English name.
+    grain: one row per category
+    primary_key: [product_category_name]
+    row_count: 73
+    relationships: []
+    notes: >
+      Two categories were missing from the source file and were added at load time:
+      pc_gamer -> pc_gamer, portateis_cozinha_e_preparadores_de_alimentos ->
+      portable_kitchen_and_food_preparers.
+    columns:
+      product_category_name:
+        type: TEXT
+        description: Category name in Portuguese.
+        examples: [beleza_saude, informatica_acessorios]
+      product_category_name_english:
+        type: TEXT
+        description: Category name in English.
+        examples: [health_beauty, computers_accessories]
+
+ambiguities:
+  - id: A1
+    question: What is the default meaning of "revenue"?
+    assumption: >
+      SUM(order_payments.payment_value) for order-level totals; SUM(order_items.price) whenever
+      the question breaks revenue down by product, category or seller. Gold SQL in Phase 3 will
+      follow this, and questions that depend on the choice are tagged.
+  - id: A2
+    question: Which order statuses count as a "sale"?
+    assumption: All statuses except 'canceled' and 'unavailable'.
+  - id: A3
+    question: How should questions about periods with incomplete data be handled (2016, 2018-09/10)?
+    assumption: >
+      Answer from the data, but the agent should warn that the period is incomplete. Benchmark
+      questions about "Q3 2018" will use Jul-Aug.
+  - id: A4
+    question: Are timestamps Brazilian local time?
+    assumption: Yes (America/Sao_Paulo), stored without a time zone. No conversion is applied.
+  - id: A5
+    question: Should freight be included in item-level revenue?
+    assumption: No. "Sales" or "revenue" by category means SUM(price); freight is reported separately when asked.
+  - id: A6
+    question: Should messy seller_city values be cleaned?
+    assumption: Not now. Seller geography questions use seller_state. Revisit if evals show failures.

@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help setup db-up db-down db-reset test test-unit lint format run-api run-ui
+.PHONY: help setup db-up db-down db-reset load-data profile-data test test-unit lint format run-api run-ui
 
 help: ## List available commands
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-10s %s\n", $$1, $$2}'
@@ -16,6 +16,12 @@ db-down: ## Stop Postgres (data volume is kept)
 
 db-reset: ## Stop Postgres AND delete its data volume
 	docker compose down -v
+
+load-data: ## (Re)load the Olist CSVs from data/raw/ and create the read-only agent role
+	uv run python -m scripts.load_data
+
+profile-data: ## Print the data profile (row counts, date ranges, null rates) as Markdown
+	uv run python -m scripts.profile_data
 
 test: ## Run all tests (integration/LLM tests skip if services or keys are missing)
 	uv run pytest
