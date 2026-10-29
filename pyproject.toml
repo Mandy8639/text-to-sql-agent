@@ -1,0 +1,45 @@
+[project]
+name = "text-to-sql-agent"
+version = "0.1.0"
+description = "Text-to-SQL analytics agent over the Olist e-commerce dataset."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "anthropic>=1.0",
+    "psycopg[binary]>=3.2",
+    "pydantic-settings>=2.4",
+    "sqlalchemy>=2.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "ruff>=0.8",
+]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = ["data"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # bugbear
+    "UP",  # pyupgrade
+    "SIM", # simplify
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+markers = [
+    "integration: needs running services (Postgres)",
+    "llm: calls the real LLM API (skipped without ANTHROPIC_API_KEY)",
+]
