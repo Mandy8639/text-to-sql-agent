@@ -36,6 +36,9 @@ class AgentResult:
     raw_reply: str | None = None  # the model's full text, for debugging
     abstention: Abstention | None = None  # set when the agent refuses or asks to clarify
     example_ids: list[str] = field(default_factory=list)  # benchmark ids used as examples
+    tables: list[str] = field(default_factory=list)  # tables whose details were in the prompt
+    # One entry per generation attempt (self-correction): {"sql", "status", "detail"}.
+    attempts: list[dict] = field(default_factory=list)
     llm_calls: list[LLMCall] = field(default_factory=list)
     total_latency_ms: float = 0.0
 

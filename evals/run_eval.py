@@ -165,6 +165,9 @@ def main() -> int:
     print(f"  latency p50 / p95  : {p50_s:.1f}s / {p95_s:.1f}s")
     print(f"  cost               : ${m['avg_cost_usd']}/question, ${m['total_cost_usd']} total")
     print(f"  errors by stage    : {m['errors_by_stage'] or 'none'}")
+    if m["n_retried"]:
+        n, rate = m["n_retried"], m["retry_success_rate"]
+        print(f"  self-correction    : {n} retried, {rate}% ended correct")
     return 1 if result["meta"]["invalid"] else 0
 
 

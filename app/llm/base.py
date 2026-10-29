@@ -28,11 +28,21 @@ class LLMResponse:
         return self.input_tokens + self.output_tokens
 
 
+# One conversation turn: {"role": "user" | "assistant", "content": "..."}
+Message = dict[str, str]
+
+
 class LLMProvider(Protocol):
-    """Anything that turns a system prompt + user message into text."""
+    """Anything that turns a system prompt + conversation into text."""
 
     model: str
 
     def complete(self, system: str, user: str, *, max_tokens: int | None = None) -> LLMResponse:
         """Run one single-turn completion."""
+        ...
+
+    def chat(
+        self, system: str, messages: list[Message], *, max_tokens: int | None = None
+    ) -> LLMResponse:
+        """Run a multi-turn completion (used by the self-correction loop)."""
         ...

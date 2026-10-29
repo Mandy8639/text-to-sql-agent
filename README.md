@@ -4,8 +4,8 @@ Ask a business question in plain English and get back SQL, a result table, a pla
 explanation, and a chart. Built on the Olist Brazilian e-commerce dataset with PostgreSQL,
 pgvector, and Claude.
 
-> Status: **Phase 3 — evaluation benchmark and harness, baseline measured.** Later phases add
-> retrieval and self-correction, safety, observability, the API/UI, and deployment.
+> Status: **Phase 4 — retrieval, few-shot, self-correction and clarify/refuse, each measured.**
+> Later phases add safety, observability, the API/UI, and deployment.
 
 ## Quick start
 
@@ -19,6 +19,7 @@ make setup      # install deps, create .env from .env.example
 # DATABASE_URL and AGENT_DATABASE_URL
 make db-up      # start Postgres 16 + pgvector and wait until healthy
 make load-data  # load the CSVs (~10 s) and create the read-only agent role
+make build-index # embed schema docs + dev examples into pgvector (first run downloads ~130 MB model)
 make test       # run tests
 uv run python -m app.cli "Which 5 states have the most unique customers?"
 ```
@@ -96,29 +97,98 @@ ignored unless the question asks for a ranking. Numbers match within 0.01, `2017
 agent does not answer. Each run also records valid-SQL rate, p50/p95 latency, tokens and cost,
 broken down by difficulty and category.
 
-**Baseline results** (88 test questions, 74 answerable; full history in
-[evals/results/summary.md](evals/results/summary.md)). *Spec* is the docs/schema.yaml version:
+**Results** (spec v3, 88 test questions: 74 answerable + 14 refuse/clarify; history in
+[evals/results/summary.md](evals/results/summary.md)). Each version adds one technique
+([app/agent/pipeline.py](app/agent/pipeline.py)):
 
-| Agent | Spec | Schema in prompt | Model | Exec acc | Hard | Abstain acc | p50 | $ / question |
-|---|---|---|---|---:|---:|---:|---:|---:|
-| baseline-v1 | **v2** | full schema.yaml (6.5k tokens) | claude-opus-5-5 | **97.3%** | 96.7% | 0% | 3.4 s | $0.033 |
-| baseline-v1 | v1 | full schema.yaml | claude-haiku-5-5 | 94.6% | 96.7% | 0% | 3.4 s | $0.0010 |
-| baseline-raw-v1 | v1 | names, types, keys only (1.4k) | claude-haiku-5-5 | 79.7% | 73.3% | 0% | 2.8 s | $0.0005 |
-
-The spec v2 Haiku runs are still to do: the API credit ran out during them (see D27).
+| Version | Adds | Haiku 5.5 exec / abstain | Opus 5.5 exec / abstain | Input tokens | $ / q (Haiku / Opus) |
+|---|---|---:|---:|---:|---:|
+| baseline-v1 | full schema doc in prompt | 100% / 0% | 100% / 0% | 6,634 | 0.0010 / 0.033 |
+| v2 | schema retrieval (pgvector, top-6 tables + join paths) | 100% / 0% | – | 5,824 | 0.0010 |
+| v3 | + 3 nearest dev examples (few-shot) | 100% / 0% | – | 6,344 | 0.0009 |
+| v4 | + self-correction (≤ 2 retries) | 100% / 0% | – | 6,419 | 0.0010 |
+| **v5** | **+ clarify / refuse** | 98.6% / **100%** | **100% / 100%** | 6,615 | 0.0009 / 0.031 |
+| baseline-raw | names + types only, no docs | 79.7% / 0% | – | 1,436 | 0.0005 |
+| **raw-fewshot** | no docs + 3 dev examples | **98.6%** / 0% | – | 1,988 | 0.0005 |
 
 What this shows:
 
-- **Documentation is worth about 15 points.** With schema.yaml's descriptions and business rules,
-  even Haiku answers almost everything. Without them, it misses mostly questions whose answer
-  depends on a company definition ("revenue" = payments on non-canceled orders), which no
-  model can guess.
-- **The documented setup leaves little headroom**: Opus solved all 30 hard questions. The
-  remaining misses are about *when* the sales status filter applies.
-- **Abstention is 0% everywhere.** The model often refuses in prose ("I can't drop tables") but
-  still returns a substitute SELECT, because the baseline has no way to refuse.
+- **Clarify/refuse was the decisive step: abstention 0% → 100%** on both models, with no false
+  refusals. Before it, the model often *said* "this data has no web traffic", then returned a
+  proxy query anyway, because SQL was the only way to reply.
+- **Examples can replace documentation:** with an undocumented schema, 3 retrieved dev examples
+  lift accuracy from 79.7% to 98.6%. The examples' SQL carries the business definitions
+  (e.g. revenue = payments on non-canceled orders). This holds for test questions with no
+  near-duplicate dev example (85.7% → 100%).
+- **Retrieval, few-shot and self-correction did not move accuracy in the documented setup,**
+  which was already at 100%. They cut input tokens (−12%), output tokens and latency instead.
+  Self-correction triggered once, and hurt: it pushed a correct prose refusal into writing SQL.
+- **The 100% is this benchmark's ceiling, not proof of a perfect agent** (one author, conventions
+  partly shaped by test failures). A blind hold-out set is the next measurement. See
+  [docs/failure_analysis.md](docs/failure_analysis.md) and decision D31.
 
-See decisions D23–D25 in [docs/decisions.md](docs/decisions.md).
+Retrieval: `make build-index` embeds table docs and dev examples locally (fastembed,
+bge-small-en-v1.5) into pgvector, read through a separate read-only role. `make retrieval-recall`
+measures schema-retrieval recall without any LLM calls (k=6: 100% on dev and test).
+
+## Commands
+
+| Command | What it does |
+|---|---|
+| `make setup` | `uv sync` and create `.env` if missing |
+| `make db-up` | Start Postgres + pgvector (waits for the healthcheck) |
+| `make db-down` | Stop Postgres (keeps data) |
+| `make db-reset` | Stop Postgres and delete its data volume |
+| `make load-data` | (Re)load CSVs into the `olist` schema; create the read-only agent role |
+| `make build-index` | Build the pgvector retrieval index (schema docs + dev examples) and its read-only role |
+| `make profile-data` | Print the data profile below as Markdown |
+| `make eval AGENT=v5 SPLIT=test` | Evaluate one agent version (costs API credits) |
+| `make eval-all` | Evaluate baseline and v2–v5 with the current `LLM_MODEL` |
+| `make validate-gold` | Run every gold query and show its result |
+| `make retrieval-recall` | Schema-retrieval recall@k on dev, no LLM calls |
+| `make test` | All tests; DB/LLM tests skip if unavailable |
+| `make test-unit` | Only tests that need no services or API key |
+| `make lint` / `make format` | ruff lint + format check / auto-fix |
+| `make run-api` / `make run-ui` | FastAPI server / Streamlit UI *(Phase 6)* |
+
+Other entry points: `python -m app.cli "question"` (baseline),
+`python -m evals.rescore <run.json>` (re-grade after a gold fix, free),
+`python -m evals.compare_runs OLD.json NEW.json` (question-level diff).
+
+## Project layout
+
+```
+app/
+  cli.py       `python -m app.cli "question"`
+  agent/       baseline.py, pipeline.py (v2–v5), versioned prompts/, SQL/abstention parsing
+  retrieval/   embedder, pgvector store, FK join-path graph
+  safety/      SQL validation and guardrails (Phase 5)
+  db/          connections, read-only query executor
+  llm/         provider interface (base.py) + Anthropic implementation
+  schema_doc.py, config.py
+api/           FastAPI (Phase 6)
+ui/            Streamlit (Phase 6)
+evals/         questions.yaml, dataset + leakage guard, compare/metrics, run_eval, rescore, results/
+scripts/       data loading, retrieval index, data profile
+tests/         unit/ (no services) and integration/ (Postgres, index, LLM)
+docs/          schema.yaml, decisions.md, failure_analysis.md
+docker/        Postgres init scripts
+```
+
+## Configuration
+
+All settings come from environment variables (see [`.env.example`](.env.example)):
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `DATABASE_URL` | local admin URL | Admin connection, scripts only |
+| `AGENT_DATABASE_URL` | local agent URL | Read-only role the agent must use (business data only) |
+| `RAG_DATABASE_URL` | local rag URL | Read-only role for the retrieval index only |
+| `ANTHROPIC_API_KEY` | — | Claude API key |
+| `LLM_MODEL` | `claude-opus-5-5` | Model ID (`claude-haiku-5-5` is ~33× cheaper at similar accuracy here) |
+| `LLM_EFFORT` | `medium` | `low` / `medium` / `high` / `xhigh` / `max` |
+| `LLM_MAX_TOKENS` | `16000` | Output token cap per call |
+| `EMBEDDING_MODEL` | `BAAI/bge-small-en-v1.5` | Local fastembed model for retrieval |
 
 ## Data
 

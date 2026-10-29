@@ -7,7 +7,7 @@
 #
 # The `ambiguities` at the bottom were reviewed and the assumptions confirmed (2026-10-29).
 
-version: 2  # v2 (2026-10-29): added A7 (status-filter scope) and A8 (review counting)
+version: 3  # v2: added A7 (status-filter scope) and A8 (review counting). v3: A7 precedence.
 dialect: postgresql
 schema: olist
 dataset: >
@@ -43,7 +43,9 @@ business_notes:
       unavailable (609), invoiced (314), processing (301), created (5), approved (2).
       Exclude 'canceled' and 'unavailable' orders ONLY for revenue, sales, or items
       sold/bought questions (see A7). Order counts, averages of price/freight/payment, and
-      review questions include every status unless the question says otherwise.
+      review questions include every status unless the question says otherwise. If the
+      question mentions revenue, sales, sold or bought, the exclusion applies even when it asks
+      for an average or a count (e.g. "average price of items sold").
       For delivery-time questions use only 'delivered' orders with a non-null
       order_delivered_customer_date.
   - topic: customers_vs_people
@@ -271,6 +273,7 @@ tables:
       - column: customer_zip_code_prefix
         references: geolocation.geolocation_zip_code_prefix
         cardinality: many-to-one
+        enforced: false
         note: Not enforced; 278 customer prefixes have no geolocation row. Use a LEFT JOIN.
     columns:
       customer_id:
@@ -303,6 +306,7 @@ tables:
       - column: seller_zip_code_prefix
         references: geolocation.geolocation_zip_code_prefix
         cardinality: many-to-one
+        enforced: false
         note: Not enforced; 7 seller prefixes have no geolocation row. Use a LEFT JOIN.
     columns:
       seller_id:
@@ -467,7 +471,9 @@ ambiguities:
     assumption: >
       Only for questions about revenue, sales, or items sold/bought. Counts of orders, averages
       (item price, freight, payment value, delivery time) and review questions include every
-      order status unless the question asks for a filter.
+      order status unless the question asks for a filter. Precedence: if the question mentions
+      revenue, sales, sold or bought, the exclusion applies even to averages and counts
+      ("average price of items sold" excludes canceled/unavailable orders).
   - id: A8
     question: What counts as "a review"?
     assumption: >

@@ -20,7 +20,7 @@ def _render_column(name: str, spec: dict[str, Any]) -> str:
     return line
 
 
-def _render_table(name: str, spec: dict[str, Any]) -> str:
+def render_table(name: str, spec: dict[str, Any]) -> str:
     lines = [
         f"### {name}",
         spec["description"].strip(),
@@ -62,7 +62,31 @@ def render_schema(doc: dict[str, Any]) -> str:
     sections = [
         f"## Dataset\n{doc['dataset'].strip()}",
         f"## Tables (PostgreSQL schema `{doc['schema']}`)",
-        *(_render_table(name, spec) for name, spec in doc["tables"].items()),
+        *(render_table(name, spec) for name, spec in doc["tables"].items()),
+        "## Business rules",
+        "\n".join(f"- {n['topic']}: {n['note'].strip()}" for n in doc["business_notes"]),
+        "## Conventions for ambiguous terms",
+        "\n".join(f"- {a['question']} {a['assumption'].strip()}" for a in doc["ambiguities"]),
+    ]
+    return "\n\n".join(sections)
+
+
+def render_table_map(doc: dict[str, Any]) -> str:
+    """One line per table, so the model knows every table exists even if not retrieved."""
+    return "\n".join(
+        f"- {name}: {spec['description'].strip().splitlines()[0]}"
+        for name, spec in doc["tables"].items()
+    )
+
+
+def render_retrieved_schema(doc: dict[str, Any], tables: list[str]) -> str:
+    """Schema-retrieval rendering: dataset, a map of ALL tables, full details for the
+    retrieved tables only, then the (always-included) business rules and conventions."""
+    sections = [
+        f"## Dataset\n{doc['dataset'].strip()}",
+        f"## All tables (PostgreSQL schema `{doc['schema']}`)\n{render_table_map(doc)}",
+        "## Details of the tables relevant to this question",
+        *(render_table(name, doc["tables"][name]) for name in tables),
         "## Business rules",
         "\n".join(f"- {n['topic']}: {n['note'].strip()}" for n in doc["business_notes"]),
         "## Conventions for ambiguous terms",

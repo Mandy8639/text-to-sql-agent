@@ -39,3 +39,16 @@ def extract_note(reply: str) -> str | None:
     if not note or _BARE.match(reply):
         return None
     return note
+
+
+# A deliberate non-answer: "REFUSE: reason" or "CLARIFY: question" at the start of the reply
+# (tolerating markdown emphasis or backticks the model may add around the keyword).
+_ABSTAIN = re.compile(r"^[\s*`_]*(REFUSE|CLARIFY)[*`_]*\s*:\s*(.+)", re.I | re.S)
+
+
+def extract_abstention(reply: str) -> tuple[str, str] | None:
+    """Return ("refuse" | "clarify", text) if the reply abstains, else None."""
+    m = _ABSTAIN.match(reply)
+    if not m:
+        return None
+    return m.group(1).lower(), m.group(2).strip().strip("`*").strip()

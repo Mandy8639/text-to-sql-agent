@@ -39,6 +39,11 @@ class QuestionScore:
     pred_columns: list[str] | None = None
     pred_data: list[list] | None = None
     pred_truncated: bool = False
+    # Retrieval and self-correction traces (Phase 4).
+    tables: list[str] | None = None
+    example_ids: list[str] | None = None
+    attempts: int = 1
+    attempt_log: list[dict] | None = None
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -109,6 +114,10 @@ def score_question(q: Question, res: AgentResult, gold: QueryResult | None) -> Q
         if res.result
         else None,
         pred_truncated=bool(res.result and res.result.truncated),
+        tables=res.tables or None,
+        example_ids=res.example_ids or None,
+        attempts=max(1, len(res.attempts)),
+        attempt_log=res.attempts or None,
     )
 
 
@@ -132,6 +141,7 @@ def aggregate(scores: list[QuestionScore]) -> dict:
     with_sql = [s for s in answerable if s.sql]
     costs = [s.cost_usd for s in scores if s.cost_usd is not None]
     latencies = [s.latency_ms for s in scores]
+    retried = [s for s in scores if s.attempts > 1]
 
     def breakdown(key: str, pool: list[QuestionScore]) -> dict:
         groups: dict[str, list[QuestionScore]] = defaultdict(list)
@@ -167,6 +177,10 @@ def aggregate(scores: list[QuestionScore]) -> dict:
             sum(s.outcome in ("refuse", "clarify") for s in answerable), len(answerable)
         ),
         "errors_by_stage": dict(errors),
+        # Self-correction: questions that needed more than one attempt, and how many ended right.
+        "n_retried": len(retried),
+        "retry_success_rate": _pct(sum(s.correct for s in retried), len(retried)),
+        "avg_attempts": round(sum(s.attempts for s in scores) / len(scores), 2) if scores else 0,
         "latency_ms_p50": _percentile(latencies, 50),
         "latency_ms_p95": _percentile(latencies, 95),
         "avg_input_tokens": round(sum(s.input_tokens for s in scores) / len(scores))

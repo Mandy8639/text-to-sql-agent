@@ -6,7 +6,7 @@ from typing import Any
 import anthropic
 
 from app.config import Effort
-from app.llm.base import LLMError, LLMResponse
+from app.llm.base import LLMError, LLMResponse, Message
 
 # Server-side refusal fallback: if Claude's safety classifiers decline a request, the API
 # re-runs it on Anthropic's recommended fallback model inside the same call.
@@ -37,13 +37,19 @@ class AnthropicProvider:
 
     def complete(self, system: str, user: str, *, max_tokens: int | None = None) -> LLMResponse:
         """Send one system + user message and return the text answer with usage stats."""
+        return self.chat(system, [{"role": "user", "content": user}], max_tokens=max_tokens)
+
+    def chat(
+        self, system: str, messages: list[Message], *, max_tokens: int | None = None
+    ) -> LLMResponse:
+        """Send a conversation (alternating user/assistant turns, ending with user)."""
         start = time.perf_counter()
         try:
             response = self._client.beta.messages.create(
                 model=self.model,
                 max_tokens=max_tokens or self.max_tokens,
                 system=system,
-                messages=[{"role": "user", "content": user}],
+                messages=messages,
                 output_config={"effort": self.effort},
                 betas=[_FALLBACK_BETA],
                 fallbacks="default",

@@ -18,6 +18,14 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg://olist_admin:change-me@localhost:5432/olist"
     # Read-only connection: the ONLY one the agent may use.
     agent_database_url: str = "postgresql+psycopg://olist_agent:change-me-too@localhost:5432/olist"
+    # Read-only connection to the retrieval index (rag schema). Separate from the agent role,
+    # so generated SQL can never read the index and retrieval can never read business data.
+    rag_database_url: str = "postgresql+psycopg://olist_rag:change-me-three@localhost:5432/olist"
+
+    # Embeddings (Phase 4 retrieval)
+    embedding_provider: Literal["fastembed"] = "fastembed"
+    embedding_model: str = "BAAI/bge-small-en-v1.5"
+    embedding_cache_dir: str = ".cache/fastembed"
 
     # LLM
     llm_provider: Literal["anthropic"] = "anthropic"

@@ -22,3 +22,6 @@ data/processed/
 .DS_Store
 .idea/
 .vscode/
+
+# Local model caches (embedding weights)
+.cache/
