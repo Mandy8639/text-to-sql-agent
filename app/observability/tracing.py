@@ -50,6 +50,8 @@ class Tracer(Protocol):
 
     def current_trace_id(self) -> str | None: ...
 
+    def score(self, trace_id: str, name: str, value: float, comment: str | None = None) -> None: ...
+
     def flush(self) -> None: ...
 
 
@@ -74,6 +76,9 @@ class NoopTracer:
 
     def current_trace_id(self) -> str | None:
         return None
+
+    def score(self, trace_id: str, name: str, value: float, comment: str | None = None) -> None:
+        pass
 
     def flush(self) -> None:
         pass
@@ -101,13 +106,15 @@ class RecordingTracer:
 
     def __init__(self) -> None:
         self.traces: list[RecordedObservation] = []
+        self.scores: list[tuple] = []
         self._stack: list[RecordedObservation] = []
 
     @contextmanager
     def trace(self, name: str, *, input: Any, metadata: dict):
         obs = RecordedObservation(name, "agent", input, tags=_TAGS.get(),
                                   metadata={**(_META.get() or {}), **metadata})  # fmt: skip
-        self.traces.append(obs)
+        # Like Langfuse: a trace started inside another one becomes its child.
+        (self._stack[-1].children if self._stack else self.traces).append(obs)
         self._stack.append(obs)
         try:
             yield obs
@@ -126,6 +133,9 @@ class RecordingTracer:
 
     def current_trace_id(self) -> str | None:
         return f"rec-{len(self.traces)}" if self._stack else None
+
+    def score(self, trace_id: str, name: str, value: float, comment: str | None = None) -> None:
+        self.scores.append((trace_id, name, value, comment))
 
     def flush(self) -> None:
         pass
@@ -170,6 +180,11 @@ class LangfuseTracer:
 
     def current_trace_id(self) -> str | None:
         return self._client.get_current_trace_id()
+
+    def score(self, trace_id: str, name: str, value: float, comment: str | None = None) -> None:
+        self._client.create_score(
+            name=name, value=value, trace_id=trace_id, data_type="BOOLEAN", comment=comment
+        )
 
     def flush(self) -> None:
         self._client.flush()

@@ -6,7 +6,9 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "anthropic>=1.0",
+    "fastapi>=0.162.0",
     "fastembed>=0.9.1",
+    "httpx>=0.28.1",
     "langfuse>=5.0.4",
     "pgvector>=0.3",
     "psycopg[binary]>=3.2",
@@ -14,6 +16,8 @@ dependencies = [
     "pyyaml>=6.0.3",
     "sqlalchemy>=2.0",
     "sqlglot>=30.25.0",
+    "streamlit>=1.66.1",
+    "uvicorn[standard]>=0.54.0",
 ]
 
 [dependency-groups]
@@ -41,8 +45,13 @@ select = [
     "SIM", # simplify
 ]
 
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI's dependency-injection idiom (`x = Depends(...)` in a signature) is safe.
+extend-immutable-calls = ["fastapi.Depends"]
+
 [tool.ruff.lint.per-file-ignores]
 "evals/summary.py" = ["E501"]  # Markdown table header must be a single line
+"tests/**" = ["E501"]  # parametrized case tables read better unwrapped
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

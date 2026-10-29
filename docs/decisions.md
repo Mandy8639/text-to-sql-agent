@@ -496,3 +496,47 @@ someone who has not seen the prompts. See failure_analysis.md, "What to try next
   **Finding:** Langfuse v5 also exported the Anthropic SDK's own OpenTelemetry span
   (`anthropic.messages.create`), which duplicated every LLM call and would double-count cost in
   dashboards. The client now exports only Langfuse-created spans (`should_export_span=is_langfuse_span`).
+
+## D35 — Product layer: service, explanations, charts, API, UI (Phase 6)
+
+- **One `QueryService`** (app/service.py) serves both the API and the UI: v6 agent → chart spec
+  → explanation, under **one trace** (the agent's trace nests inside, plus `chart` and `explain`
+  steps). The request id is created once and reused by the agent, so logs, trace and response share it.
+- **Explanations** are a second, small LLM call (Haiku at low effort, configurable; about $0.0005).
+  The result rows go in a fenced `<data>` block that the prompt marks as untrusted data
+  (review comments are customer-written: an indirect-injection path). The prompt forbids
+  computing new numbers. A **grounding check** then lists every number in the explanation
+  that is not in the rows or question (after rounding, separators, and ratio→percent). The
+  UI shows a warning when something is ungrounded, e.g. a derived "2.8 times". Refusals and
+  clarifications need no explanation call; errors get a fixed user-facing message, while the
+  Postgres detail stays in the steps panel and the trace.
+- **Charts by rules, not by an LLM:** time + measure → line; one category + measure (≤ 30 rows)
+  → bar; single value → metric; otherwise a table. Deterministic, free and testable. The UI keeps
+  the query's ORDER BY on bar charts (Streamlit sorts bars alphabetically by default, which
+  scrambles a top-N; found in the browser check).
+- **API** (FastAPI): `POST /query`, `POST /feedback`, `GET /health` (database + index, 503 when
+  degraded), `GET /schema`. Pydantic validation (3–500 chars, whitespace collapsed, control
+  characters rejected), an in-memory per-IP sliding-window rate limit (default 10/min; Phase 7
+  adds a spend cap), and a catch-all handler that returns only `{"error", "error_id"}`.
+  Feedback goes through the API, so Langfuse keys never reach the browser.
+- **UI** (Streamlit) talks to the API over HTTP: example questions (dev split only), the
+  explanation, a metric/chart/table, "Show SQL", "Show reasoning steps", latency/cost/trace id,
+  and 👍/👎 recorded as a Langfuse `user_feedback` score. Local config binds Streamlit to
+  127.0.0.1 and disables its usage telemetry (both are on by default).
+- **Verified in the browser:** answer with bar chart, SQL and steps; feedback score stored in
+  Langfuse on the right trace; refuse and clarify paths. Two UI bugs were found and fixed there:
+  bar ordering, and the steps panel mutating the stored result on reruns.
+
+## D36 — Conversation follow-ups: tradeoff, not built yet (Phase 6)
+
+- "Now break that down by state" needs the previous question and SQL as context. Cleanest
+  version: the UI sends the last turn (question + SQL) with the new question, and the agent
+  prompt gets a "previous question / previous SQL" block. No server-side session store.
+- **Costs and risks:** (1) every number so far is for single-turn questions, so follow-ups would
+  need their own benchmark slice (multi-turn gold SQL) to be measured honestly; (2) context
+  makes clarify/refuse harder ("delete those" after a list); (3) retrieval should embed the
+  *rewritten* standalone question, which adds a rewrite step (an extra LLM call, about +1 s);
+  (4) the prompt cache prefix changes per conversation.
+- **Recommendation:** build it as a v7 with a query-rewriting step ("rewrite the follow-up as a
+  standalone question", then the normal pipeline), plus ~15 two-turn benchmark questions,
+  only if the demo needs it. Left out for now: the owner decides.

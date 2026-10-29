@@ -54,8 +54,8 @@ format: ## Auto-fix lint issues and format code
 	uv run ruff check --fix .
 	uv run ruff format .
 
-run-api: ## Start the FastAPI server (Phase 6)
-	@echo "Not built yet — the API arrives in Phase 6." && exit 1
+run-api: ## Start the FastAPI server on :8000 (docs at /docs)
+	uv run uvicorn api.main:app --host 127.0.0.1 --port 8000
 
-run-ui: ## Start the Streamlit UI (Phase 6)
-	@echo "Not built yet — the UI arrives in Phase 6." && exit 1
+run-ui: ## Start the Streamlit UI on :8501 (needs run-api)
+	uv run streamlit run ui/app.py --server.port 8501

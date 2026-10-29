@@ -1,0 +1,7 @@
+# Local development defaults. Phase 7 deployment overrides the address for the host.
+[server]
+address = "127.0.0.1"   # localhost only; Streamlit's default listens on every interface
+headless = true
+
+[browser]
+gatherUsageStats = false  # no telemetry to Streamlit

@@ -4,8 +4,7 @@ Ask a business question in plain English and get back SQL, a result table, a pla
 explanation, and a chart. Built on the Olist Brazilian e-commerce dataset with PostgreSQL,
 pgvector, and Claude.
 
-> Status: **Phase 5 — safety layer and observability (Langfuse traces, JSON logs).** Next: the
-> API/UI, then deployment.
+> Status: **Phase 6 — API, Streamlit UI, grounded explanations and charts.** Next: deployment.
 
 ## Quick start
 
@@ -21,8 +20,36 @@ make db-up      # start Postgres 16 + pgvector and wait until healthy
 make load-data  # load the CSVs (~10 s) and create the read-only agent role
 make build-index # embed schema docs + dev examples into pgvector (first run downloads ~130 MB model)
 make test       # run tests
-uv run python -m app.cli "Which 5 states have the most unique customers?"
+make run-api    # terminal 1: FastAPI on http://127.0.0.1:8000 (OpenAPI docs at /docs)
+make run-ui     # terminal 2: Streamlit on http://127.0.0.1:8501
 ```
+
+## Using it
+
+**UI** (`make run-ui`): ask a question (or click an example). You get a plain-English answer,
+a chart when one fits, the result table, collapsible **Show SQL** and **Show reasoning steps**
+panels (retrieved tables, examples used, every attempt), and 👍/👎 feedback recorded in Langfuse.
+
+**API** (`make run-api`):
+
+```bash
+curl -s -X POST localhost:8000/query -H 'content-type: application/json' \
+  -d '{"question": "What was the total revenue in each month from January to August 2018?"}'
+```
+
+| Endpoint | Returns |
+|---|---|
+| `POST /query` | `outcome` (answer / clarify / refuse / error), `explanation`, `explanation_grounded`, `sql`, `columns`, `rows`, `chart` spec, `steps`, `trace_id`, `request_id`, latency, cost |
+| `POST /feedback` | 204; stores a `user_feedback` score on the trace |
+| `GET /health` | database + retrieval index status (503 if degraded) |
+| `GET /schema` | documented tables and columns |
+
+Limits: 3–500 characters per question, 10 questions/minute per IP (configurable). Errors return
+`{"error", "error_id"}` only. **Explanations** use only numbers present in the result, and a
+grounding check flags any that are not. **Charts** are chosen by rules: time → line,
+category → bar, single value → metric, otherwise a table.
+
+CLI (baseline agent only): `uv run python -m app.cli "Which 5 states have the most unique customers?"`
 
 ## Asking questions (baseline agent)
 
@@ -176,7 +203,7 @@ files store each question's `trace_id`.
 | `make test` | All tests; DB/LLM tests skip if unavailable |
 | `make test-unit` | Only tests that need no services or API key |
 | `make lint` / `make format` | ruff lint + format check / auto-fix |
-| `make run-api` / `make run-ui` | FastAPI server / Streamlit UI *(Phase 6)* |
+| `make run-api` / `make run-ui` | FastAPI server (:8000) / Streamlit UI (:8501) |
 
 Other entry points: `python -m app.cli "question"` (baseline),
 `python -m evals.rescore <run.json>` (re-grade after a gold fix, free),
@@ -193,9 +220,11 @@ app/
   observability/  Langfuse tracer (no-op without keys), JSON logs with request IDs
   db/          connections, read-only query executor
   llm/         provider interface (base.py) + Anthropic implementation
+  service.py   QueryService: agent + chart + explanation, one trace per question
+  charts.py, explain.py   rule-based chart spec; grounded explanation
   schema_doc.py, config.py
-api/           FastAPI (Phase 6)
-ui/            Streamlit (Phase 6)
+api/           FastAPI app (main.py): /query /feedback /health /schema
+ui/            Streamlit app (app.py), talks to the API over HTTP
 evals/         questions.yaml, dataset + leakage guard, compare/metrics, run_eval, rescore, results/
 scripts/       data loading, retrieval index, data profile
 tests/         unit/ (no services) and integration/ (Postgres, index, LLM)
@@ -219,6 +248,10 @@ All settings come from environment variables (see [`.env.example`](.env.example)
 | `EMBEDDING_MODEL` | `BAAI/bge-small-en-v1.5` | Local fastembed model for retrieval |
 | `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` | — | Enable Langfuse tracing (off when unset) |
 | `LANGFUSE_BASE_URL` | `https://cloud.langfuse.com` | Langfuse host (`https://us.cloud.langfuse.com` for US region) |
+| `AGENT_VERSION` | `v6` | Pipeline config the API/UI serve |
+| `EXPLAIN_MODEL` | `claude-haiku-5-5` | Model for result explanations |
+| `API_RATE_LIMIT_PER_MINUTE` | `10` | Per-IP question limit |
+| `API_URL` (UI only) | `http://localhost:8000` | Where the Streamlit UI finds the API |
 
 ## Data
 

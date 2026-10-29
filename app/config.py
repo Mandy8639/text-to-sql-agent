@@ -22,6 +22,14 @@ class Settings(BaseSettings):
     # so generated SQL can never read the index and retrieval can never read business data.
     rag_database_url: str = "postgresql+psycopg://olist_rag:change-me-three@localhost:5432/olist"
 
+    # Product layer (Phase 6). Explanations are a short second call; a small model is enough.
+    explain_model: str = "claude-haiku-5-5"
+    explain_effort: Effort = "low"
+    agent_version: str = "v6"  # which pipeline config the API/UI serve
+    api_rate_limit_per_minute: int = 10
+    api_max_question_chars: int = 500
+    api_max_rows_returned: int = 200
+
     # Observability (Phase 5). Tracing is off unless both keys are set.
     langfuse_public_key: str | None = None
     langfuse_secret_key: SecretStr | None = None

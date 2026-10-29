@@ -30,7 +30,7 @@ from app.agent.types import AgentResult, LLMCall
 from app.db.executor import QueryExecutionError, QueryResult, execute_readonly
 from app.llm.base import LLMError, LLMProvider, Message
 from app.llm.pricing import estimate_cost_usd
-from app.observability.logs import log_event, request_scope
+from app.observability.logs import current_request_id, log_event, request_scope
 from app.observability.tracing import NoopTracer, Tracer
 from app.retrieval.schema_graph import connect
 from app.retrieval.store import Example, VectorStore
@@ -188,7 +188,7 @@ class PipelineAgent:
         start = time.perf_counter()
         out = AgentResult(question=question, agent_version=self.version)
         with (
-            request_scope() as rid,
+            request_scope(current_request_id()) as rid,  # reuse the caller's id if set
             self.tracer.trace(
                 "text-to-sql", input=question, metadata={"agent": self.version, "request_id": rid}
             ) as root,
