@@ -19,6 +19,7 @@ from datetime import UTC, datetime
 from app.config import get_settings
 from app.db.connection import make_engine
 from app.db.executor import QueryResult, execute_readonly
+from app.schema_doc import load_schema_doc
 from evals.agents import AGENTS, Agent
 from evals.dataset import Question, assert_no_leakage, load_split
 from evals.metrics import QuestionScore, aggregate, score_question
@@ -27,6 +28,7 @@ from evals.summary import RESULTS_DIR, rebuild_summary
 log = logging.getLogger("run_eval")
 
 GOLD_MAX_ROWS = 5000
+MAX_LLM_ERROR_SHARE = 0.10  # above this, the run is marked invalid
 
 
 def _git_commit() -> str:
@@ -97,7 +99,14 @@ def run(
         "wall_clock_s": round(wall_s, 1),
         "commit": _git_commit(),
         "stores_rows": True,
+        "schema_doc_version": load_schema_doc()["version"],
     }
+    # An outage (no credit, rate limits, network) shows up as llm-stage errors. Such a run measures
+    # the API, not the agent, so it is flagged and kept out of summary.md.
+    llm_errors = metrics["errors_by_stage"].get("llm", 0)
+    meta["invalid"] = llm_errors > MAX_LLM_ERROR_SHARE * len(scores)
+    if meta["invalid"]:
+        log.error("INVALID RUN: %d/%d questions failed at the LLM stage", llm_errors, len(scores))
 
     RESULTS_DIR.mkdir(exist_ok=True)
     out = RESULTS_DIR / f"{run_at.replace(':', '').replace('-', '')}_{agent.version}_{split}.json"
@@ -133,6 +142,8 @@ def main() -> int:
         workers=args.workers,
     )
     m = result["metrics"]
+    if result["meta"]["invalid"]:
+        print("\nINVALID RUN (too many LLM/API errors); not added to summary.md", file=sys.stderr)
     print(f"\n{result['meta']['agent_version']} on {args.split} ({m['n']} questions)")
     print(f"  execution accuracy : {m['execution_accuracy']}%  (answerable: {m['n_answerable']})")
     print(f"  overall accuracy   : {m['overall_accuracy']}%")
@@ -154,7 +165,7 @@ def main() -> int:
     print(f"  latency p50 / p95  : {p50_s:.1f}s / {p95_s:.1f}s")
     print(f"  cost               : ${m['avg_cost_usd']}/question, ${m['total_cost_usd']} total")
     print(f"  errors by stage    : {m['errors_by_stage'] or 'none'}")
-    return 0
+    return 1 if result["meta"]["invalid"] else 0
 
 
 if __name__ == "__main__":

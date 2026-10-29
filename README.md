@@ -97,13 +97,15 @@ agent does not answer. Each run also records valid-SQL rate, p50/p95 latency, to
 broken down by difficulty and category.
 
 **Baseline results** (88 test questions, 74 answerable; full history in
-[evals/results/summary.md](evals/results/summary.md)):
+[evals/results/summary.md](evals/results/summary.md)). *Spec* is the docs/schema.yaml version:
 
-| Agent | Schema in prompt | Model | Exec acc | Hard | Abstain acc | p50 | $ / question |
-|---|---|---|---:|---:|---:|---:|---:|
-| baseline-v1 | full schema.yaml (6.2k tokens) | claude-opus-5-5 | **97.3%** | 100% | 0% | 3.9 s | $0.0325 |
-| baseline-v1 | full schema.yaml | claude-haiku-5-5 | **94.6%** | 96.7% | 0% | 3.4 s | $0.0010 |
-| baseline-raw-v1 | names, types, keys only (1.4k) | claude-haiku-5-5 | **79.7%** | 73.3% | 0% | 2.8 s | $0.0005 |
+| Agent | Spec | Schema in prompt | Model | Exec acc | Hard | Abstain acc | p50 | $ / question |
+|---|---|---|---|---:|---:|---:|---:|---:|
+| baseline-v1 | **v2** | full schema.yaml (6.5k tokens) | claude-opus-5-5 | **97.3%** | 96.7% | 0% | 3.4 s | $0.033 |
+| baseline-v1 | v1 | full schema.yaml | claude-haiku-5-5 | 94.6% | 96.7% | 0% | 3.4 s | $0.0010 |
+| baseline-raw-v1 | v1 | names, types, keys only (1.4k) | claude-haiku-5-5 | 79.7% | 73.3% | 0% | 2.8 s | $0.0005 |
+
+The spec v2 Haiku runs are still to do: the API credit ran out during them (see D27).
 
 What this shows:
 

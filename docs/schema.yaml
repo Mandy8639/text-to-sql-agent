@@ -7,7 +7,7 @@
 #
 # The `ambiguities` at the bottom were reviewed and the assumptions confirmed (2026-10-29).
 
-version: 1
+version: 2  # v2 (2026-10-29): added A7 (status-filter scope) and A8 (review counting)
 dialect: postgresql
 schema: olist
 dataset: >
@@ -41,7 +41,9 @@ business_notes:
     note: >
       order_status values: delivered (96,478), shipped (1,107), canceled (625),
       unavailable (609), invoiced (314), processing (301), created (5), approved (2).
-      For sales/revenue questions, exclude 'canceled' and 'unavailable' orders.
+      Exclude 'canceled' and 'unavailable' orders ONLY for revenue, sales, or items
+      sold/bought questions (see A7). Order counts, averages of price/freight/payment, and
+      review questions include every status unless the question says otherwise.
       For delivery-time questions use only 'delivered' orders with a non-null
       order_delivered_customer_date.
   - topic: customers_vs_people
@@ -222,7 +224,8 @@ tables:
     notes: >
       review_id is not unique on its own (789 reviews cover several orders) and 547 orders have
       several reviews. 768 orders have no review. Average score is 4.09; 58% of reviews are 5.
-      Comments are written in Portuguese.
+      Comments are written in Portuguese. When counting or averaging reviews themselves, count
+      each review_id once (see A8); a review's score and comments are the same on all its rows.
     columns:
       review_id:
         type: TEXT
@@ -459,3 +462,16 @@ ambiguities:
   - id: A6
     question: Should messy seller_city values be cleaned?
     assumption: Not now. Seller geography questions use seller_state. Revisit if evals show failures.
+  - id: A7
+    question: When should canceled and unavailable orders be excluded?
+    assumption: >
+      Only for questions about revenue, sales, or items sold/bought. Counts of orders, averages
+      (item price, freight, payment value, delivery time) and review questions include every
+      order status unless the question asks for a filter.
+  - id: A8
+    question: What counts as "a review"?
+    assumption: >
+      One review_id. "How many reviews", "share of reviews" and "average score across reviews"
+      count each review_id once (e.g. COUNT(DISTINCT review_id), or average over
+      SELECT DISTINCT review_id, review_score). Per-order or per-category averages join reviews to
+      orders and use the review rows for those orders.

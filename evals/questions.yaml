@@ -9,14 +9,16 @@
 #   expected    answer | clarify | refuse. What a good agent should do.
 #   gold_sql    reference query (answer questions only). Scored by comparing result sets.
 #   order_matters  true only when the question asks for an explicit ranking order.
-#   verify      true = the author is not fully sure the gold SQL is the right reading; review.
+#   verify      true = gold SQL not yet reviewed by a second person. All current questions were
+#               reviewed on 2026-10-29 (decision D26), so none carry it.
 #   notes       why the gold SQL is written this way.
 #
 # Gold SQL conventions (from docs/schema.yaml ambiguities A1-A6)
 #   - Order-level revenue (totals, by customer, by state, by month) = SUM(order_payments.payment_value).
 #     Revenue by product, category or seller = SUM(order_items.price), freight excluded.
-#   - Revenue / sales / "sold" questions exclude orders with status canceled or unavailable.
-#     Count-of-orders questions without those words include every status.
+#   - A7: only revenue / sales / sold / bought questions exclude orders with status canceled or
+#     unavailable. Order counts, averages and review questions include every status.
+#   - A8: a review is one review_id. Questions about reviews themselves count each review_id once.
 #   - Time questions use orders.order_purchase_timestamp unless they name another date.
 #   - "Customers" as people = customers.customer_unique_id.
 #   - Delivery time = order_delivered_customer_date - order_purchase_timestamp in decimal days,
@@ -59,7 +61,10 @@ questions:
     difficulty: easy
     expected: answer
     question: What is the average review score across all reviews?
-    gold_sql: SELECT round(avg(review_score), 2) AS avg_score FROM order_reviews
+    gold_sql: |
+      SELECT round(avg(review_score), 2) AS avg_score
+      FROM (SELECT DISTINCT review_id, review_score FROM order_reviews) reviews
+    notes: A8 - each review_id counts once (same result as averaging rows here, 4.09).
 
   - id: agg-05
     split: dev
@@ -161,7 +166,8 @@ questions:
     question: What percentage of reviews give a score of 5?
     gold_sql: |
       SELECT round(100.0 * count(*) FILTER (WHERE review_score = 5) / count(*), 2) AS pct_five_star
-      FROM order_reviews
+      FROM (SELECT DISTINCT review_id, review_score FROM order_reviews) reviews
+    notes: A8 - each review_id counts once (57.83%; counting rows gives 57.78%).
 
   - id: agg-15
     split: test
@@ -268,13 +274,12 @@ questions:
     expected: answer
     question: How many 1-star reviews include a comment message?
     gold_sql: |
-      SELECT count(*) AS reviews
+      SELECT count(DISTINCT review_id) AS reviews
       FROM order_reviews
       WHERE review_score = 1 AND review_comment_message IS NOT NULL
-    verify: true
     notes: >
-      Counts (review, order) rows: 8,745. Counting distinct review_id gives 8,641, because one
-      review can cover several orders. Opus 5.5 chose distinct reviews, Haiku 5.5 chose rows.
+      A8 - distinct reviews (8,641). Counting (review, order) rows gives 8,745, because one
+      review can cover several orders.
 
   - id: flt-09
     split: dev
@@ -419,7 +424,6 @@ questions:
       FROM order_categories oc
       JOIN order_reviews r ON r.order_id = oc.order_id
       GROUP BY oc.category
-    verify: true
     notes: >
       Reviews are per order, not per item. Counting each (order, category) once avoids weighting
       an order with 3 units of the same category 3 times.
@@ -505,7 +509,6 @@ questions:
       FROM order_items oi
       JOIN products p ON p.product_id = oi.product_id
       WHERE p.product_category_name_english = 'furniture_decor'
-    verify: true
     notes: Not a revenue/sales question, so no status filter.
 
   - id: join-11
@@ -566,7 +569,6 @@ questions:
       HAVING count(DISTINCT oc.order_id) >= 100
       ORDER BY avg(r.review_score) DESC
       LIMIT 1
-    verify: true
     notes: Same per-(order, category) logic as join-04.
 
   - id: join-15
@@ -613,7 +615,6 @@ questions:
       JOIN sellers s ON s.seller_id = oi.seller_id
       WHERE s.seller_state <> c.customer_state
         AND o.order_status NOT IN ('canceled', 'unavailable')
-    verify: true
     notes: '"Bought" treated as a sale, so canceled/unavailable orders are excluded.'
 
   - id: join-18
@@ -691,9 +692,10 @@ questions:
     question: What was the average review score for each month of 2018, based on when the review was created?
     gold_sql: |
       SELECT date_trunc('month', review_creation_date)::date AS month, round(avg(review_score), 2) AS avg_score
-      FROM order_reviews
+      FROM (SELECT DISTINCT review_id, review_score, review_creation_date FROM order_reviews) reviews
       WHERE review_creation_date >= '2018-01-01' AND review_creation_date < '2019-01-01'
       GROUP BY 1
+    notes: A8 - each review_id counts once.
 
   - id: ts-06
     split: dev
@@ -845,7 +847,6 @@ questions:
       FROM monthly
       ORDER BY coalesce(jul, 0) - coalesce(aug, 0) DESC
       LIMIT 5
-    verify: true
     notes: >
       A cleaner version of the brief's "biggest month-over-month drop in Q3 2018" question: per
       A3, Q3 2018 has only July and August, so the only real month-over-month change is Jul->Aug.
@@ -927,7 +928,7 @@ questions:
     category: window_functions
     difficulty: medium
     expected: answer
-    question: What was the running total of orders by month during 2017?
+    question: What was the running total of orders by month during 2017, starting from January 2017?
     gold_sql: |
       WITH monthly AS (
         SELECT date_trunc('month', order_purchase_timestamp)::date AS month, count(*) AS orders
@@ -937,7 +938,6 @@ questions:
       )
       SELECT month, sum(orders) OVER (ORDER BY month) AS running_total
       FROM monthly
-    verify: true
     notes: The running total starts in January 2017 (2016 orders are not carried in).
 
   - id: win-05
@@ -945,7 +945,7 @@ questions:
     category: window_functions
     difficulty: hard
     expected: answer
-    question: What was the 3-month moving average of monthly revenue for each month from January to August 2018?
+    question: What was the 3-month moving average of monthly revenue (the current month and the two before it) for each month from January to August 2018?
     gold_sql: |
       WITH monthly AS (
         SELECT date_trunc('month', o.order_purchase_timestamp)::date AS month, sum(p.payment_value) AS revenue
@@ -960,7 +960,6 @@ questions:
       SELECT month, moving_avg
       FROM smoothed
       WHERE month >= '2018-01-01' AND month < '2018-09-01'
-    verify: true
     notes: Trailing window (current + 2 previous months); Jan and Feb 2018 use Nov/Dec 2017.
 
   - id: win-06
@@ -1140,7 +1139,6 @@ questions:
       WHERE o.order_status NOT IN ('canceled', 'unavailable')
         AND o.order_purchase_timestamp >= '2018-01-01' AND o.order_purchase_timestamp < '2019-01-01'
       GROUP BY c.customer_state
-    verify: true
     notes: '"State" read as customer state (where the revenue came from), not seller state.'
 
   - id: amb-05
@@ -1349,12 +1347,11 @@ questions:
     category: filtering
     difficulty: hard
     expected: answer
-    question: How many products are not in the health_beauty category?
+    question: How many products are not in the health_beauty category, including products with no category?
     gold_sql: |
       SELECT count(*) AS products
       FROM products
       WHERE product_category_name_english IS DISTINCT FROM 'health_beauty'
-    verify: true
     notes: >
       NULL trap - `<> 'health_beauty'` silently drops the 610 products with no category. They are
       not labelled health_beauty, so they are counted here.
@@ -1430,7 +1427,6 @@ questions:
           JOIN products pr ON pr.product_id = oi.product_id
           WHERE oi.order_id = p.order_id AND pr.product_category_name_english = 'bed_bath_table'
         )
-    verify: true
     notes: >
       Order-level revenue (payments, A1) for orders containing the category; the whole order's
       payment counts, including other categories in it. Joining payments to items would multiply it.
@@ -1525,15 +1521,15 @@ questions:
         FROM orders o
         JOIN customers c ON c.customer_id = o.customer_id
         JOIN order_payments p ON p.order_id = o.order_id
-        WHERE o.order_status NOT IN ('canceled', 'unavailable')
         GROUP BY o.order_id, c.customer_state
       )
       SELECT customer_state, round(avg(order_value), 2) AS avg_order_value
       FROM per_order
       GROUP BY customer_state
       HAVING count(*) >= 1000
-    verify: true
-    notes: The 1,000-order threshold counts the same (non-canceled, paid) orders that are averaged.
+    notes: >
+      A7 - an average of payments with no sales/revenue wording includes every status (an
+      earlier version filtered, contradicting A7). The threshold counts the same paid orders.
 
   - id: ts-16
     split: test
@@ -1667,7 +1663,6 @@ questions:
       HAVING count(*) >= 500
       ORDER BY avg((o.order_delivered_customer_date > o.order_estimated_delivery_date)::int) DESC
       LIMIT 1
-    verify: true
     notes: Late = delivered after the estimate. Each (order, category) pair counts once.
 
   - id: win-16

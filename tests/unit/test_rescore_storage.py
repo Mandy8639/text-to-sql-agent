@@ -62,3 +62,18 @@ def test_rebuild_summary_skips_partial_runs(tmp_path):
     text = rebuild_summary(tmp_path, tmp_path / "summary.md")
     assert "| v-1 |" in text and "**50.0**" in text
     assert "v-2" not in text
+
+
+def test_rebuild_summary_skips_invalid_and_superseded_runs(tmp_path):
+    def write(name, scores, **meta_extra):
+        meta = {"run_at": "2026-10-29T10:00:00Z", "agent_version": f"v-{name}", "model": "m",
+                "split": "test", "commit": "abc", **meta_extra}  # fmt: skip
+        run = {"meta": meta, "metrics": {}, "questions": [s.to_dict() for s in scores]}
+        (tmp_path / f"{name}.json").write_text(json.dumps(run))
+
+    write("outage", [_score("a", False)], invalid=True)
+    write("orig", [_score("a", False)])
+    write("fixed", [_score("a", True)], rescored_from="orig.json")
+    text = rebuild_summary(tmp_path, tmp_path / "summary.md")
+    assert "v-outage" not in text and "v-orig" not in text
+    assert "v-fixed" in text and "rescored" in text
