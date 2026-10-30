@@ -120,3 +120,10 @@ Pushing to `main` redeploys the app. If schema.yaml or the dev examples change, 
 | `make stack-up` / `make stack-down` | db + api + ui in Docker (http://127.0.0.1:8501) |
 | `make space-image` | build the exact Space image locally |
 | `docker run --rm -p 127.0.0.1:7860:7860 --env-file .env -e DB_HOST_OVERRIDE=host.docker.internal text2sql-space` | run the Space image against the local DB |
+
+## Updating the live demo
+
+Pushing to `main` pulls the new code into Streamlit Cloud, but a running app keeps already-imported
+modules and its cached service. After a code or spec change, use **Manage app → ⋮ → Reboot app**.
+If `docs/schema.yaml` changed, also rebuild the index on Neon with the values from `.env.neon`.
+
