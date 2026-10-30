@@ -7,7 +7,7 @@
 #
 # The `ambiguities` at the bottom were reviewed and the assumptions confirmed (2026-10-29).
 
-version: 3  # v2: added A7 (status-filter scope) and A8 (review counting). v3: A7 precedence.
+version: 4  # v2: added A7 (status-filter scope) and A8 (review counting). v3: A7 precedence. v4: A9 (average order value).
 dialect: postgresql
 schema: olist
 dataset: >
@@ -59,8 +59,9 @@ business_notes:
       units within an order (1..n). Units sold = COUNT(*) of order_items rows.
   - topic: average_order_value
     note: >
-      Average order value = total revenue / COUNT(DISTINCT order_id). Do not average over
-      order_items or order_payments rows, which have several rows per order.
+      Average order value = total revenue / COUNT(DISTINCT order_id), so canceled and unavailable
+      orders are excluded (A9). Do not average over order_items or order_payments rows, which
+      have several rows per order.
   - topic: join_fanout
     note: >
       An order has 1..n items, 1..n payments and 0..n reviews. Joining orders to two of these
@@ -473,7 +474,8 @@ ambiguities:
       (item price, freight, payment value, delivery time) and review questions include every
       order status unless the question asks for a filter. Precedence: if the question mentions
       revenue, sales, sold or bought, the exclusion applies even to averages and counts
-      ("average price of items sold" excludes canceled/unavailable orders).
+      ("average price of items sold" excludes canceled/unavailable orders). Average order value
+      is a revenue metric and also excludes them (A9).
   - id: A8
     question: What counts as "a review"?
     assumption: >
@@ -481,3 +483,9 @@ ambiguities:
       count each review_id once (e.g. COUNT(DISTINCT review_id), or average over
       SELECT DISTINCT review_id, review_score). Per-order or per-category averages join reviews to
       orders and use the review rows for those orders.
+  - id: A9
+    question: Does "average order value" include canceled and unavailable orders?
+    assumption: >
+      No. Average order value (AOV) is revenue (A1, A2) divided by orders, so canceled and
+      unavailable orders are excluded, even when the question adds "total payment per order".
+      Other averages still follow A7: "average payment value" includes every status.

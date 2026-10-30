@@ -57,7 +57,7 @@ applied it to a freight total, which A7 says includes every status. Examples car
 | join-24 "average order value (total payment per order)" by state | v5 / Haiku | Excluded canceled/unavailable orders | "Average order value" sounds like a sales KPI, but A7 says averages of payments include every status. A real team would define AOV explicitly. The spec, not the SQL, is the weak point. |
 
 This category shrank over the project as the spec was clarified (A7 and A8 in v2, A7 precedence
-in v3), which is also why the documented baseline reached 100%. See the caveat in D31.
+in v3, A9 in v4), which is also why the documented baseline reached 100%. See the caveat in D31.
 
 ## D. Self-correction side effect (v4)
 
@@ -83,7 +83,8 @@ otherwise have shown up as agent "failures".
 ## F. Hold-out and Phase 5 runs
 
 - **Hold-out h06** (average order value by state), on both models, is the same convention edge as
-  join-24: AOV is treated as a sales metric. See holdout_review.md and the A9 proposal in D32.
+  join-24: AOV is treated as a sales metric. See holdout_review.md. Rule A9 (D39) now settles
+  this, and because it was chosen after the hold-out, 19/20 stays the reported score.
 - **v6 / Haiku, ts-19** (top 5 categories by 2017 revenue): `ORDER BY revenue_2017 DESC` ranked a
   category with *no* 2017 sales first, because Postgres sorts NULLs first under DESC. This is the
   exact trap the original gold SQL fell into (category E). The raw and the safety-validated SQL

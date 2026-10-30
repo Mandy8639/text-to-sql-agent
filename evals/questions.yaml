@@ -1521,6 +1521,7 @@ questions:
         FROM orders o
         JOIN customers c ON c.customer_id = o.customer_id
         JOIN order_payments p ON p.order_id = o.order_id
+        WHERE o.order_status NOT IN ('canceled', 'unavailable')
         GROUP BY o.order_id, c.customer_state
       )
       SELECT customer_state, round(avg(order_value), 2) AS avg_order_value
@@ -1528,8 +1529,8 @@ questions:
       GROUP BY customer_state
       HAVING count(*) >= 1000
     notes: >
-      A7 - an average of payments with no sales/revenue wording includes every status (an
-      earlier version filtered, contradicting A7). The threshold counts the same paid orders.
+      A9 - average order value is a revenue metric, so canceled/unavailable orders are excluded
+      (D39; an earlier version included them under A7). The threshold counts the same orders.
 
   - id: ts-16
     split: test

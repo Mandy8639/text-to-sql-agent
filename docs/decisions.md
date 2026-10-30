@@ -434,7 +434,7 @@ someone who has not seen the prompts. See failure_analysis.md, "What to try next
   Proposal for the owner: add **A9, "average order value = revenue (A1/A2) ÷ orders, so canceled and
   unavailable orders are excluded"**, which matches common business usage and both models.
   Caveat: deciding this after seeing hold-out results is tuning on hold-out. If adopted, it must be
-  recorded as such, and the hold-out numbers above stay the reported ones.
+  recorded as such, and the hold-out numbers above stay the reported ones. Adopted in D39.
 
 ## D33 — Safety layer: four layers, allowlist validator, measured for false positives (Phase 5)
 
@@ -584,4 +584,37 @@ someone who has not seen the prompts. See failure_analysis.md, "What to try next
   environment at startup, since the docs don't promise that root-level secrets become env vars.
 - **Rehearsed before deploying:** a clean copy with no `.env`, a virtualenv built only from
   `ui/requirements.txt`, settings only from a secrets file, against Neon: answered, refused a
-  delete, and recorded spend in Neon. The real host is still untested at this point.
+  delete, and recorded spend in Neon.
+- **Verified on the real host** (2026-10-30): Streamlit installed from `ui/requirements.txt`, the app
+  answered a new question correctly from Neon, refused an injection with no LLM call, kept the data
+  intact, recorded spend in Neon and sent traces to Langfuse. It runs on **Python 3.14**, not the 3.12
+  used locally and in CI: the first deploy skipped that setting, and it worked, so it was kept.
+
+## D39 — Rule A9: average order value excludes canceled and unavailable orders (post hold-out)
+
+- **Decision:** spec v4 adds **A9**: average order value (AOV) is revenue (A1, A2) divided by orders,
+  so canceled and unavailable orders are excluded. Other averages still follow A7: "average payment
+  value" includes every status.
+- **Why:** the spec contradicted itself. Its business note already defined AOV as total revenue ÷
+  orders, and revenue excludes those orders under A2, while A7 said averages of payments include
+  every status. Both models, and common business usage, read AOV as a sales metric.
+- **What changed:** A9 and a pointer in A7 and the AOV business note, and the gold SQL of test
+  question join-24, which now filters by status. Local and Neon indexes rebuilt.
+- **Disclosure: this is tuning on the hold-out.** The rule was chosen after h06 and join-24 were
+  seen to fail. So:
+  - `evals/holdout.yaml` is unchanged, the hold-out was not re-run, and **19/20 stays the reported
+    hold-out score**.
+  - Test results on spec v4 (v6: Haiku and Opus 100% execution, 100% abstention) are not independent
+    evidence for A9. join-24 now passes partly because its gold moved to what the models did.
+  - On spec v3, v6 with Haiku scored 98.6% (its miss, ts-19, was a NULL-ordering slip that did not
+    recur, so this run also reflects run-to-run noise). Older runs keep their old scores: they were
+    graded against the spec of their day and are not rescored.
+- **Alternative rejected:** keeping A7 as it stood and documenting the disagreement. That preserves
+  a convention both models and most analysts would call wrong, and leaves the live demo's definition
+  in conflict with the spec's own business note.
+- **Found on the way:** re-running `build_index` failed on Neon, because a non-superuser may not
+  issue `ALTER ROLE ... NOSUPERUSER` even as a no-op. All three role scripts now send that attribute
+  only when the role is new or actually is a superuser.
+- **Also fixed:** the grounding check (D35) flagged "40 of 73 shown" on long results, because the
+  prompt gives the model `rows_shown` and `rows_total` but the check did not count them as data.
+

@@ -11,10 +11,9 @@ clarification** instead of guessing. Every claim below is measured on a 123-ques
 with a leakage-guarded test split, plus a blind hold-out set written by someone who never saw
 the prompts.
 
-**Live demo:** _coming soon — see [docs/deployment.md](docs/deployment.md)_ (Streamlit Community Cloud + Neon, free tiers; may need a moment to wake)
+**Live demo:** https://text-to-sql-agent-8639.streamlit.app (Streamlit Community Cloud + Neon; if it has been idle, it may need a moment to wake)
 
-![Demo](docs/demo.gif)
-<!-- GIF placeholder: record a 20-30 s screen capture of the UI and save it as docs/demo.gif -->
+![Demo: a question answered with SQL, a chart and a table, then an injection attempt refused](docs/demo.gif)
 
 ## Results
 
@@ -28,11 +27,16 @@ Test split: 88 questions (74 answerable, 14 should be refused or clarified). Eac
 | v3 | + 3 retrieved dev examples | 100% | 0% | – | – | $0.0009 |
 | v4 | + self-correction (≤ 2 retries) | 100% | 0% | – | – | $0.0010 |
 | **v5** | **+ clarify / refuse** | 98.6% | **100%** | **100%** | **100%** | $0.0009 |
-| v6 | + safety layer | 98.6% | 100% | – | – | $0.0009 |
+| v6 | + safety layer, spec v4 (A9) | 100% | 100% | 100% | 100% | $0.0009 |
 | **Blind hold-out** (20 questions, frozen v5) | | **19 / 20** | | **19 / 20** | | |
 | | | | | | | |
 | baseline, **no schema docs** | table/column names only | 79.7% | 0% | – | – | $0.0005 |
 | **no schema docs + 3 examples** | | **98.6%** | 0% | – | – | $0.0005 |
+
+Rows up to v5 used spec v3. v6 was re-run on spec v4, which adds rule A9 (average order value)
+and changes the gold answer of one test question to match. A9 was chosen after seeing the
+hold-out, so that gain is not independent evidence: on spec v3, v6 with Haiku scored 98.6%. The
+hold-out was not re-run or re-graded ([D39](docs/decisions.md)).
 
 What the numbers say:
 
@@ -48,7 +52,8 @@ What the numbers say:
    hold-out it fixed a typo.
 4. **The 100% is a ceiling, not a claim of perfection**: one author, and conventions partly shaped
    by test failures. Hence the **blind hold-out: 19/20 on both models**, whose single miss is
-   a convention edge case ("average order value"), not a SQL error.
+   a convention edge case ("average order value"), not a SQL error. Rule A9 now covers that case,
+   but 19/20 stays the reported score.
 5. **Haiku matches Opus at about 1/33 of the cost** here, so the demo runs on Haiku.
 
 Full history: [evals/results/summary.md](evals/results/summary.md) ·
@@ -88,7 +93,7 @@ Details: [docs/architecture.md](docs/architecture.md) (component diagram, reques
 | Decision | Why | More |
 |---|---|---|
 | **Benchmark before improvements**; result-set scoring; dev/test split enforced in code | So every change is measured, and test questions can never leak into prompts (the guard caught a real overlap) | D19–D22 |
-| **Gold SQL follows written conventions** (A1–A8) | Two correct people otherwise write different SQL, and the score would measure disagreement | D26 |
+| **Gold SQL follows written conventions** (A1–A9) | Two correct people otherwise write different SQL, and the score would measure disagreement | D26 |
 | **Hardened the benchmark, then ablated the docs** when the baseline hit 96–98% | Harder questions didn't create headroom; removing docs showed where it really was | D23–D25 |
 | **One configurable pipeline**, one technique per version, unit-tested | Keeps "add one technique at a time" checkable | D30 |
 | **Allowlist SQL validator + read-only role + per-transaction READ ONLY** | Defense in depth: 55 attacks blocked, 0 false positives on 122 gold queries | D12, D33 |
@@ -96,14 +101,15 @@ Details: [docs/architecture.md](docs/architecture.md) (component diagram, reques
 | **Explanations grounded in the rows**, which are treated as untrusted | Review text is customer-written (indirect injection); invented numbers are flagged | D35 |
 | **Langfuse behind a no-op-by-default tracer** | Full trace per question when configured; zero dependency when not | D34 |
 
-All 38 decisions, with alternatives and tradeoffs: [docs/decisions.md](docs/decisions.md).
+All 39 decisions, with alternatives and tradeoffs: [docs/decisions.md](docs/decisions.md).
 
 ## Limitations and future work
 
 - **One schema, 9 tables, English only.** Retrieval's token savings are small at this size (−12%).
   A larger schema would make table selection matter.
-- **Conventions are the weak point:** the remaining misses are definitional ("average order
-  value" with or without canceled orders). A proposed rule (A9) is pending.
+- **Conventions are the weak point:** the misses so far are definitional, such as "average order
+  value" with or without canceled orders. Rule A9 settles that one, chosen after the hold-out
+  (D39); new blind questions would be needed to measure it independently.
 - **Open-ended questions** (7 of the 20 hold-out) need rubric grading; an LLM judge calibrated
   on those reviews would scale this.
 - **No follow-up questions** ("now by state"). Design and tradeoffs in D36.

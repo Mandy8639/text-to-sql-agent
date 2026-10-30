@@ -70,6 +70,9 @@ be reset by reloading, so the global limit and the daily cap are the real protec
    set -a && . ./.env.neon && set +a && make bootstrap
    ```
 
+   Quote any URL containing `&` (Neon's often has `&channel_binding=require`), or the shell cannot
+   source the file.
+
    `make bootstrap` = load the CSVs (one transaction), create the read-only agent role, build
    the pgvector index and its role, and create the spend table and its role. About 1–2 min over
    the network.
@@ -79,7 +82,7 @@ be reset by reloading, so the global limit and the daily cap are the real protec
 1. Sign in at share.streamlit.io with GitHub and allow access to the repository.
 2. **Create app** → deploy from GitHub: repository `Mandy8639/text-to-sql-agent`, branch `main`,
    main file `ui/streamlit_app.py`.
-3. **Advanced settings:** Python **3.12**, and paste the settings into **Secrets** (TOML):
+3. **Advanced settings:** Python **3.12** (the live demo happens to run on 3.14, which also worked), and paste the settings into **Secrets** (TOML):
 
    ```toml
    UI_MODE = "inprocess"

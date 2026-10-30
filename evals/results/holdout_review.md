@@ -50,6 +50,7 @@ covered them. The leakage guard exempts content that also exists in dev (D32).
 2. **Average order value is the one recurring disagreement** (test join-24, hold-out h06): both
    models treat AOV as a sales metric (exclude canceled orders), while A7 treats any average of
    payments as all-status. That is evidence the *convention* is counter-intuitive, not that the
-   agent is wrong. See D32 for the proposed fix.
+   agent is wrong. Rule A9 later adopted this reading (D39). The hold-out was not re-run or
+   re-graded, so 19/20 stands.
 3. Open-ended questions (7 of 20) cannot be graded by result-set match. Real users ask them, so
    a rubric review (or an LLM judge calibrated on these reviews) is needed beyond the benchmark.
