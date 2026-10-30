@@ -1,0 +1,89 @@
+name: Eval gate
+
+# Runs the agent on the dev split and blocks a regression (evals/gate.py, D40). It uses the real
+# LLM and the deployed database through its read-only roles. `pull_request` gives forks no
+# secrets, so their code never runs with them.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  HAS_SECRETS: ${{ secrets.ANTHROPIC_API_KEY != '' }}
+
+jobs:
+  gate:
+    name: Eval gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # A job-level path filter would leave a required check pending forever on docs-only PRs,
+      # so the job always runs and this step decides whether to spend anything.
+      - name: Does this change affect the agent?
+        id: scope
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          paths='^(app/|docs/schema\.yaml|evals/(gate|run_eval|metrics|compare|dataset|agents)\.py|evals/questions\.yaml|evals/baselines/|pyproject\.toml|uv\.lock|\.github/workflows/eval-gate\.yml)'
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          elif git diff --name-only "$BASE" HEAD | grep -qE "$paths"; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "No agent files changed; nothing to evaluate." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: No secrets available
+        if: steps.scope.outputs.run == 'true' && env.HAS_SECRETS != 'true'
+        run: echo "::warning::Eval gate skipped; this run has no secrets (a fork, or not set up yet)."
+
+      - uses: astral-sh/setup-uv@v6
+        if: steps.scope.outputs.run == 'true' && env.HAS_SECRETS == 'true'
+        with:
+          version: "0.12.15"
+          enable-cache: true
+
+      - name: Install dependencies (from the lockfile)
+        if: steps.scope.outputs.run == 'true' && env.HAS_SECRETS == 'true'
+        run: uv sync --frozen
+
+      - name: Cache the embedding model
+        if: steps.scope.outputs.run == 'true' && env.HAS_SECRETS == 'true'
+        uses: actions/cache@v4
+        with:
+          path: .cache/fastembed
+          key: fastembed-bge-small-en-v1.5
+
+      - name: Run the gate
+        id: gate
+        if: steps.scope.outputs.run == 'true' && env.HAS_SECRETS == 'true'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          AGENT_DATABASE_URL: ${{ secrets.AGENT_DATABASE_URL }}
+          RAG_DATABASE_URL: ${{ secrets.RAG_DATABASE_URL }}
+          LLM_MODEL: claude-haiku-5-5
+        run: uv run python -m evals.gate --report gate_report.md
+
+      - name: Publish the report
+        if: always() && hashFiles('gate_report.md') != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          cat gate_report.md >> "$GITHUB_STEP_SUMMARY"
+          if [ -n "$PR" ]; then
+            gh pr comment "$PR" --body-file gate_report.md --edit-last --create-if-none
+          fi

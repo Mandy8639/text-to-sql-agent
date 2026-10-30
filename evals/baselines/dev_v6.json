@@ -1,0 +1,52 @@
+{
+  "meta": {
+    "recorded_at": "2026-10-30T15:51:36Z",
+    "commit": "fb3d989-dirty",
+    "model": "claude-haiku-5-5",
+    "schema_doc_version": 4,
+    "runs": 3
+  },
+  "correct": {
+    "agg-02": true,
+    "agg-05": true,
+    "agg-08": true,
+    "agg-11": true,
+    "agg-14": true,
+    "agg-21": true,
+    "amb-02": true,
+    "amb-05": true,
+    "flt-01": true,
+    "flt-05": true,
+    "flt-09": true,
+    "flt-13": true,
+    "join-01": true,
+    "join-07": true,
+    "join-11": true,
+    "join-15": true,
+    "ref-01": true,
+    "ref-05": true,
+    "ref-09": true,
+    "ts-02": true,
+    "ts-03": true,
+    "ts-06": true,
+    "ts-09": true,
+    "ts-12": true,
+    "ts-18": true,
+    "win-01": true,
+    "win-04": true,
+    "win-07": true,
+    "win-10": true,
+    "win-14": true,
+    "win-17": true
+  },
+  "unstable": [
+    "agg-18",
+    "flt-18",
+    "join-04",
+    "join-22"
+  ],
+  "execution_accuracy": 95.7,
+  "abstention_accuracy": 100.0,
+  "avg_cost_usd": 0.00092,
+  "latency_ms_p95": 6564.395542004301
+}

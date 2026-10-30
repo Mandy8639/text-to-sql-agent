@@ -88,6 +88,27 @@ flowchart LR
 
 Details: [docs/architecture.md](docs/architecture.md) (component diagram, request lifecycle, failure paths).
 
+## Regression gate
+
+Every change to the agent runs the [eval gate](evals/gate.py) in CI: v6 on the 35 dev questions,
+compared question by question with a [recorded baseline](evals/baselines/dev_v6.json), for about
+$0.03. It blocks if a critical question (abstention, the revenue definition) breaks, more than one
+other question breaks, or cost rises over 25% or p95 latency over 50%. Haiku is not deterministic,
+so the baseline covers 3 runs, and a question only counts as broken if it fails twice.
+
+Rehearsed with the same 3 secrets as CI, in a clean copy with no `.env`:
+
+| Check | Result |
+|---|---|
+| Unchanged code, 3 runs | passed 3 of 3 (no false alarms) |
+| REFUSE/CLARIFY instructions removed | **blocked**: 4 critical questions broke, abstention 100% → 0% |
+| Wrong revenue definition in the prompt | **blocked**: 3 critical questions broke, accuracy 95.7% → 83.9% |
+| Prompt bloated | **blocked**: cost per question up 53% |
+| Revenue rule flipped in the spec only | passed: the answers stayed correct, because retrieved examples carry the rule |
+
+The last row is a real limit: a documentation-only change that examples compensate for does not
+trip the gate. See [D40](docs/decisions.md).
+
 ## Key design decisions
 
 | Decision | Why | More |
@@ -99,9 +120,10 @@ Details: [docs/architecture.md](docs/architecture.md) (component diagram, reques
 | **Allowlist SQL validator + read-only role + per-transaction READ ONLY** | Defense in depth: 55 attacks blocked, 0 false positives on 122 gold queries | D12, D33 |
 | **Three database roles**: agent (read data), rag (read index), app (write spend counter only) | Generated SQL can't see the examples; the deployed app never holds admin credentials | D29, deployment.md |
 | **Explanations grounded in the rows**, which are treated as untrusted | Review text is customer-written (indirect injection); invented numbers are flagged | D35 |
+| **Eval gate in CI, on the dev split** | A change that makes the agent worse is blocked before it ships, without exposing test questions | D40 |
 | **Langfuse behind a no-op-by-default tracer** | Full trace per question when configured; zero dependency when not | D34 |
 
-All 39 decisions, with alternatives and tradeoffs: [docs/decisions.md](docs/decisions.md).
+All 40 decisions, with alternatives and tradeoffs: [docs/decisions.md](docs/decisions.md).
 
 ## Limitations and future work
 
@@ -110,6 +132,8 @@ All 39 decisions, with alternatives and tradeoffs: [docs/decisions.md](docs/deci
 - **Conventions are the weak point:** the misses so far are definitional, such as "average order
   value" with or without canceled orders. Rule A9 settles that one, chosen after the hold-out
   (D39); new blind questions would be needed to measure it independently.
+- **The test scores are single runs.** Haiku varies between runs: over 3 runs on dev it averaged
+  95.7%, and 4 of 35 questions flipped between correct and wrong (D40).
 - **Open-ended questions** (7 of the 20 hold-out) need rubric grading; an LLM judge calibrated
   on those reviews would scale this.
 - **No follow-up questions** ("now by state"). Design and tradeoffs in D36.
@@ -147,6 +171,7 @@ make retrieval-recall                              # retrieval quality, no LLM c
 | `make run-api` / `make run-ui` | FastAPI (:8000, docs at `/docs`) / Streamlit (:8501) |
 | `make stack-up` / `make stack-down` | db + api + ui in Docker |
 | `make eval AGENT=<v> SPLIT=<s>` | evaluate a version (`baseline`, `v2`…`v6`, `raw-fewshot`) on `dev`, `test` or `holdout` |
+| `make eval-gate` / `make eval-baseline` | compare with the baseline / record a new one (3 runs) |
 | `make validate-gold` | run every gold query |
 | `make test` / `make test-unit` / `make lint` | tests / tests without services / ruff |
 | `make requirements` | regenerate `ui/requirements.txt` from `uv.lock` |

@@ -60,6 +60,7 @@ def run(
     limit: int | None,
     ids: list[str] | None,
     workers: int,
+    save: bool = True,
 ) -> dict:
     settings = get_settings()
     agent = AGENTS[agent_name](settings)
@@ -117,18 +118,22 @@ def run(
     if meta["invalid"]:
         log.error("INVALID RUN: %d/%d questions failed at the LLM stage", llm_errors, len(scores))
 
+    questions_out = [s.to_dict() for s in scores]
+    if not save:  # the regression gate reports its own result and keeps no run file
+        return {"meta": meta, "metrics": metrics, "questions": questions_out, "path": None}
+
     RESULTS_DIR.mkdir(exist_ok=True)
     out = RESULTS_DIR / f"{run_at.replace(':', '').replace('-', '')}_{agent.version}_{split}.json"
     out.write_text(
         json.dumps(
-            {"meta": meta, "metrics": metrics, "questions": [s.to_dict() for s in scores]},
+            {"meta": meta, "metrics": metrics, "questions": questions_out},
             indent=2,
             default=str,
         )
     )
     rebuild_summary()
     log.info("saved %s", out.relative_to(RESULTS_DIR.parent.parent))
-    return {"meta": meta, "metrics": metrics, "path": out}
+    return {"meta": meta, "metrics": metrics, "questions": questions_out, "path": out}
 
 
 def main() -> int:

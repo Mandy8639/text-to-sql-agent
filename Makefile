@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help setup requirements setup-app-db bootstrap stack-up stack-down space-image db-up db-down db-reset load-data build-index profile-data eval eval-all retrieval-recall validate-gold test test-unit lint format run-api run-ui
+.PHONY: help setup requirements setup-app-db bootstrap stack-up stack-down space-image db-up db-down db-reset load-data build-index profile-data eval eval-all eval-gate eval-baseline retrieval-recall validate-gold test test-unit lint format run-api run-ui
 
 help: ## List available commands
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-17s %s\n", $$1, $$2}'
@@ -51,6 +51,12 @@ eval: ## Evaluate an agent (make eval AGENT=baseline SPLIT=test); costs API cred
 
 eval-all: ## Evaluate baseline and v2-v6 on SPLIT (default test) with the current LLM_MODEL
 	for a in baseline v2 v3 v4 v5 v6; do uv run python -m evals.run_eval --agent $$a --split $(SPLIT) || exit 1; done
+
+eval-gate: ## Compare the agent with the recorded baseline on dev (about $0.03 on Haiku)
+	LLM_MODEL=claude-haiku-5-5 uv run python -m evals.gate
+
+eval-baseline: ## Record a new gate baseline over 3 runs (about $0.10 on Haiku)
+	LLM_MODEL=claude-haiku-5-5 uv run python -m evals.gate --record
 
 retrieval-recall: ## Offline schema-retrieval recall@k (no LLM calls); tune k on dev
 	uv run python -m evals.retrieval_recall --split dev --ks 3 4 5 6

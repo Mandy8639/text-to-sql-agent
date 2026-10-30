@@ -618,3 +618,36 @@ someone who has not seen the prompts. See failure_analysis.md, "What to try next
 - **Also fixed:** the grounding check (D35) flagged "40 of 73 shown" on long results, because the
   prompt gives the model `rows_shown` and `rows_total` but the check did not count them as data.
 
+## D40 — CI eval gate on the dev split, with a baseline and a recheck
+
+- **Decision:** `evals/gate.py` runs v6 on the dev split on every change to the agent and compares
+  it with `evals/baselines/dev_v6.json`. It blocks when a critical question breaks (abstention and
+  the revenue definition), more than 1 other question breaks, cost per question rises over 25%, or
+  p95 latency rises over 50%. A run dominated by API errors exits 2 (inconclusive), not pass.
+- **Dev, not a test subset:** people read gate failures and fix what they see, and that must not
+  happen to the split behind the reported numbers. Each dev question is excluded from its own
+  few-shot retrieval, so it cannot copy its answer. The cost: 35 questions, already used for tuning.
+- **Noise handling instead of McNemar:** at n=35 an exact McNemar test needs about 5 breaks and no
+  fixes to reach p < 0.05, so it would pass a single broken refusal. Instead the baseline covers 3
+  runs and marks questions that flip as unstable (they cannot break), and a stable question that
+  fails is run once more and counts only if it fails twice.
+- **Runs against Neon through the read-only agent and rag roles,** because CI has no Olist data.
+  Forks get no secrets, so their code never runs with them. The job always runs and decides inside
+  a step whether anything changed: a path filter would leave a required check pending forever.
+- **Measured:** 3 of 3 clean runs passed. Removing the abstention instructions was blocked, as was
+  a wrong revenue definition in the prompt, and a bloated prompt was blocked on cost.
+- **Known limits:**
+  - Flipping the revenue rule in the spec alone passed, twice. Accuracy did not fall: retrieved
+    examples carry the rule, so the answers stayed right. The gate measures behaviour on dev, so
+    a documentation-only regression that examples hide on dev goes unnoticed, though it could
+    still affect questions with no similar example.
+  - A spec change does not rebuild the Neon index, so the gate sees new prompts with old retrieval.
+  - The baseline is 3 runs, so a question that fails about 1 run in 4 can still look stable.
+  - It only blocks merges if branch protection requires it. A direct push to `main` is checked
+    afterwards, not stopped.
+- **What it revealed:** all four unstable dev questions are the agent, not the infrastructure.
+  join-22 fans out over items, agg-18 sometimes adds a status filter that A7 does not call for,
+  flt-18 counts "unknown" as a category, and join-04 averages by review, against A8. Dev averaged
+  95.7% over 3 runs, below the single-run 100% on test, so those test scores should be read as
+  one sample from a noisy process.
+
