@@ -648,6 +648,7 @@ someone who has not seen the prompts. See failure_analysis.md, "What to try next
 - **What it revealed:** all four unstable dev questions are the agent, not the infrastructure.
   join-22 fans out over items, agg-18 sometimes adds a status filter that A7 does not call for,
   flt-18 counts "unknown" as a category, and join-04 averages by review, against A8. Dev averaged
-  95.7% over 3 runs, below the single-run 100% on test, so those test scores should be read as
-  one sample from a noisy process.
+  95.7% over 3 runs. Three repeat runs on test, plus one on Neon, then all scored 100%, so test
+  is stable and the instability is on dev. A dev question cannot retrieve its own example, which
+  may explain part of the gap; that is not measured.
 

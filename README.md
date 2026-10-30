@@ -132,8 +132,11 @@ All 40 decisions, with alternatives and tradeoffs: [docs/decisions.md](docs/deci
 - **Conventions are the weak point:** the misses so far are definitional, such as "average order
   value" with or without canceled orders. Rule A9 settles that one, chosen after the hold-out
   (D39); new blind questions would be needed to measure it independently.
-- **The test scores are single runs.** Haiku varies between runs: over 3 runs on dev it averaged
-  95.7%, and 4 of 35 questions flipped between correct and wrong (D40).
+- **Dev is less stable than test.** Haiku scored 100% on test in all 4 repeat runs (3 local, 1 on
+  Neon), but averaged 95.7% over 3 runs on dev, where 4 of 35 questions flipped between correct
+  and wrong (D40). A dev question cannot retrieve its own example, which may explain part of the
+  gap; that is not measured. Test repeats show stability, not independence: the blind hold-out
+  remains the fairer score.
 - **Open-ended questions** (7 of the 20 hold-out) need rubric grading; an LLM judge calibrated
   on those reviews would scale this.
 - **No follow-up questions** ("now by state"). Design and tradeoffs in D36.
