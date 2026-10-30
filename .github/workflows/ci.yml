@@ -24,6 +24,11 @@ jobs:
       - name: Install dependencies (from the lockfile)
         run: uv sync --frozen
 
+      - name: ui/requirements.txt matches uv.lock
+        run: |
+          make requirements
+          git diff --exit-code ui/requirements.txt
+
       - name: Lint
         run: |
           uv run ruff check .

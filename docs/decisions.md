@@ -566,3 +566,22 @@ someone who has not seen the prompts. See failure_analysis.md, "What to try next
   Integration tests need the loaded data (CSVs are not in the repo) and run locally.
 - **Verified before deploying:** the exact Space image, run locally with the demo settings, answered
   in the browser as non-root, with only port 7860 published, and recorded its cost in the spend table.
+
+## D38 — Correction: Streamlit Community Cloud replaces Hugging Face Spaces (Phase 7)
+
+- **D37 was wrong on one point.** It stated that Hugging Face Docker Spaces were free. The limits came from
+  memory and were never checked; the create-Space form showed that Docker and Gradio Spaces need a
+  paid plan. Provider limits in docs/deployment.md are now read from each provider's page.
+- **Measured before choosing:** the API alone uses about 270 MB, so the 512 MB assumption that
+  ruled other hosts out was never tested either. With the agent in-process, the UI uses about 400 MB.
+- **New design:** `UI_MODE=inprocess` runs QueryService inside Streamlit behind a `Backend` interface
+  (`ui/backends.py`); the default stays HTTP to the API. Validation, rate limits and the spend cap moved to
+  `app/limits.py`, shared by both paths. Tradeoff: no public API on the demo, and visitors may
+  be identified only by session.
+- **Traps handled:** `ui/app.py` was renamed `ui/streamlit_app.py`, because Streamlit puts `ui/` on
+  `sys.path` and `import app` would have loaded the script instead of the package. The bind address moved
+  out of `.streamlit/config.toml` into the Makefile. Streamlit secrets are copied into the
+  environment at startup, since the docs don't promise that root-level secrets become env vars.
+- **Rehearsed before deploying:** a clean copy with no `.env`, a virtualenv built only from
+  `ui/requirements.txt`, settings only from a secrets file, against Neon: answered, refused a
+  delete, and recorded spend in Neon. The real host is still untested at this point.

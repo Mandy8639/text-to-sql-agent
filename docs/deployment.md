@@ -1,37 +1,42 @@
 # Deployment
 
-## Options (free tiers, checked 2026-10)
+## Options (checked on the providers' own pages, 2026-10-30)
 
-The app needs **Postgres 16 + pgvector** (153 MB: 144 MB data + a 240 KB index) and **one
-container** with the API, the UI and the local embedding model (~1 GB RAM when running).
+The app needs **Postgres + pgvector** (153 MB: 144 MB data + a 240 KB index) and one Python
+process with the agent, UI and local embedding model. **Measured:** about 270 MB for the API alone
+and **about 400 MB** for the UI with the agent in-process.
 
-| Piece | Option | Free tier | Fit |
+| Piece | Option | What the provider says | Fit |
 |---|---|---|---|
-| Database | **Neon** (chosen) | 0.5 GB; suspends after 5 min idle (about 1 s to wake) | ✅ fits; pgvector + unaccent; normal SQL roles, so the least-privilege roles carry over |
-| Database | Supabase | 500 MB; project pauses after a week without activity | ✅ fits; also pgvector |
-| App | **Hugging Face Spaces, Docker** (chosen) | 2 vCPU, **16 GB RAM**; sleeps after 48 h idle (about 1 min cold start) | ✅ plenty of RAM for the embedding model; secrets UI; public URL |
-| App | Render free web service | 512 MB RAM; spins down after 15 min (about 1 min cold start) | ⚠️ tight for API + model + Streamlit |
-| App | Streamlit Community Cloud | UI only; needs a public GitHub repo | ❌ the API would still need a host |
-| App | Fly.io, Railway | no longer free (trial credit only) | ❌ |
+| Database | **Neon** (chosen) | free plan used for this project; Postgres 18 | ✅ fits; pgvector + unaccent; normal SQL roles, so the least-privilege roles carry over |
+| App | **Streamlit Community Cloud** (chosen) | 690 MB–2.7 GB memory (figures dated Feb 2024); sleeps after 12 h without visitors; reads `uv.lock`, `requirements.txt` and others | ✅ fits; one app, no separate API host |
+| App | Render free web service | 750 hours/month; spins down after 15 min, about 1 min to wake; "do not use for production"; memory not stated on that page | ⚠️ workable, but needs a separate host for the UI |
+| App | Hugging Face Spaces | **Docker and Gradio Spaces require a paid plan** (only Static is free) | ❌ not free; works as built if you pay |
+| App | Koyeb | pricing page shows no free web service | ❌ |
 
-**Chosen: Neon + Hugging Face Spaces.** Costs $0/month. The tradeoff is cold starts after idle
-periods, which is fine for a portfolio demo.
+**Correction:** an earlier version of this page said Docker Spaces were free. That came from memory, not from
+a check, and was wrong. The limits above were read from each provider's page; they change, so
+re-check before relying on them.
+
+**Chosen: Neon + Streamlit Community Cloud.** The tradeoff is sleeping after idle periods.
 
 ## Architecture as deployed
 
 ```
-visitor ──HTTPS──> HF Space container (port 7860)
-                     ├─ Streamlit UI   0.0.0.0:7860 (public)
-                     └─ FastAPI        127.0.0.1:8000 (container-internal only)
-                           ├─ olist_agent  ──> Neon: olist.*        (SELECT only)
-                           ├─ olist_rag    ──> Neon: rag.*          (SELECT only)
-                           ├─ olist_app    ──> Neon: app.spend_daily (write, that table only)
-                           ├─ Anthropic API (Claude Haiku 5.5)
-                           └─ Langfuse Cloud (traces, feedback)
+visitor --HTTPS--> Streamlit Community Cloud (UI_MODE=inprocess)
+                     Streamlit UI + QueryService + local embedding model, in one process
+                       |- olist_agent --> Neon: olist.*          (SELECT only)
+                       |- olist_rag   --> Neon: rag.*            (SELECT only)
+                       |- olist_app   --> Neon: app.spend_daily  (write, that table only)
+                       |- Anthropic API (Claude Haiku 5.5)
+                       '- Langfuse Cloud (traces, feedback)
 ```
 
+There is no public API on this host: the FastAPI service remains in the repo for local and Docker use.
+`app/limits.py` holds the validation, rate limits and spend cap, so both paths enforce the same rules.
+
 **The deployed app never receives the admin `DATABASE_URL`.** Data is loaded once, from a
-laptop, with the Neon owner role. The container gets only the three least-privilege URLs.
+laptop, with the Neon owner role. The app gets only the three least-privilege URLs.
 
 ## Cost protection
 
@@ -43,9 +48,8 @@ laptop, with the Neon owner role. The container gets only the three least-privil
 | Daily spend cap | $1.00/day (UTC), stored in Postgres so restarts can't reset it | `DAILY_BUDGET_USD` |
 | Anthropic console limit | set a monthly limit (e.g. $10) as the last backstop | console.anthropic.com |
 
-The UI forwards each visitor's IP (from the platform's proxy header) to the API, which trusts it
-only from inside the container. That keeps the per-visitor limit per visitor even though every
-request reaches the API from the UI.
+Visitors are identified by IP when the host exposes it, otherwise by session. A session id can
+be reset by reloading, so the global limit and the daily cap are the real protection.
 
 ## Step by step
 
@@ -70,30 +74,41 @@ request reaches the API from the UI.
    the pgvector index and its role, and create the spend table and its role. About 1–2 min over
    the network.
 
-### 2. Hugging Face Space (app)
+### 2. Streamlit Community Cloud (app)
 
-1. Sign up at huggingface.co → **New Space** → SDK **Docker** → *Blank* → hardware
-   **CPU basic (free)** → visibility *Public* (for a demo link).
-2. Space **Settings → Variables and secrets**. Add as **secrets**:
-   `ANTHROPIC_API_KEY`, `AGENT_DATABASE_URL`, `RAG_DATABASE_URL`, `APP_DATABASE_URL`,
-   `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`. Add as **variables**:
-   `LLM_MODEL=claude-haiku-5-5`, `DAILY_BUDGET_USD=1`, `API_RATE_LIMIT_PER_MINUTE=5`,
-   `API_GLOBAL_RATE_LIMIT_PER_MINUTE=20`.
-3. Create an HF **access token** with write access (Settings → Access Tokens), then push:
+1. Sign in at share.streamlit.io with GitHub and allow access to the repository.
+2. **Create app** → deploy from GitHub: repository `Mandy8639/text-to-sql-agent`, branch `main`,
+   main file `ui/streamlit_app.py`.
+3. **Advanced settings:** Python **3.12**, and paste the settings into **Secrets** (TOML):
 
-   ```bash
-   HF_SPACE=<your-username>/<space-name> scripts/deploy_space.sh
+   ```toml
+   UI_MODE = "inprocess"
+   LLM_MODEL = "claude-haiku-5-5"
+   DAILY_BUDGET_USD = "1"
+   API_RATE_LIMIT_PER_MINUTE = "5"
+   API_GLOBAL_RATE_LIMIT_PER_MINUTE = "20"
+   AGENT_DATABASE_URL = "..."
+   RAG_DATABASE_URL = "..."
+   APP_DATABASE_URL = "..."
+   ANTHROPIC_API_KEY = "..."
+   LANGFUSE_PUBLIC_KEY = "..."
+   LANGFUSE_SECRET_KEY = "..."
    ```
 
-   The script copies only runtime code (no `.env`, data, tests or eval results) into the
-   Space repo. The first build takes about 5 min (it bakes the embedding model into the image).
-4. Open `https://huggingface.co/spaces/<user>/<space-name>`. The sidebar shows "API online"
-   once the database and index are reachable.
+   Never add `DATABASE_URL` here. `ui/requirements.txt` sits next to the entrypoint, so it is
+   found first; CI fails if it drifts from `uv.lock` (`make requirements` regenerates it).
+4. Deploy. The first start installs dependencies and downloads the embedding model. The sidebar
+   shows "Agent online" once the database and index are reachable.
 
 ### Updating
 
-Re-run `scripts/deploy_space.sh` after changes. If schema.yaml or the dev examples change,
-also re-run `make build-index` against Neon (with `.env.neon` loaded).
+Pushing to `main` redeploys the app. If schema.yaml or the dev examples change, also re-run
+`make build-index` against Neon (with `.env.neon` loaded).
+
+### Alternative: one container on a paid host
+
+`docker/space.Dockerfile` runs API + UI in one container (`make space-image`), and
+`scripts/deploy_space.sh` pushes it to a Hugging Face Docker Space, which needs a paid plan.
 
 ## Local equivalents
 

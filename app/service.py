@@ -8,6 +8,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
+from sqlalchemy import text
+
 from app.agent.pipeline import VERSIONS, PipelineAgent
 from app.agent.types import AgentResult
 from app.charts import ChartSpec, choose_chart
@@ -189,6 +191,24 @@ class QueryService:
                     metadata={"grounded": exp.grounded, "ungrounded": exp.ungrounded_numbers},
                 )
         return exp
+
+    # --- health --------------------------------------------------------------------------------
+
+    def health(self) -> dict[str, str]:
+        """Database (agent role) and retrieval index reachable? Never raises."""
+        checks = {}
+        try:
+            self.agent.execute("SELECT 1 AS ok")
+            checks["database"] = "ok"
+        except Exception as exc:  # noqa: BLE001 - report it, don't crash the health check
+            checks["database"] = f"error: {type(exc).__name__}"
+        try:
+            with self.agent.store.engine.connect() as conn:
+                conn.execute(text("SELECT 1 FROM rag.index_meta LIMIT 1"))
+            checks["retrieval_index"] = "ok"
+        except Exception as exc:  # noqa: BLE001
+            checks["retrieval_index"] = f"error: {type(exc).__name__}"
+        return checks
 
     # --- feedback -------------------------------------------------------------------------------
 

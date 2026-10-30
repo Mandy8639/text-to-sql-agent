@@ -27,10 +27,11 @@ def engine():
     eng.dispose()
 
 
-def test_postgres_version_is_16(engine):
+def test_postgres_version_is_16_or_newer(engine):
+    # Local Docker runs 16; the deployed Neon database runs 18. Both are supported.
     with engine.connect() as conn:
         version = conn.execute(text("SHOW server_version")).scalar_one()
-    assert version.startswith("16")
+    assert int(version.split(".")[0]) >= 16
 
 
 def test_pgvector_extension_installed(engine):

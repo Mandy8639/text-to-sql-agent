@@ -4,7 +4,7 @@
 
 ```mermaid
 flowchart LR
-    U[Visitor] -->|question| UI[Streamlit UI<br/>ui/app.py]
+    U[Visitor] -->|question| UI[Streamlit UI<br/>ui/streamlit_app.py]
     UI -->|POST /query| API[FastAPI<br/>api/main.py]
     API --> G{Rate limits<br/>+ daily spend cap}
     G --> S[QueryService<br/>app/service.py]
@@ -22,6 +22,9 @@ flowchart LR
     S -.traces.-> LF[Langfuse]
     UI -->|POST /feedback| API
 ```
+
+The live demo runs the same QueryService inside Streamlit (`UI_MODE=inprocess`) with the same
+limits, so there the HTTP hop is absent; see docs/deployment.md.
 
 Three database roles, each with the least privilege for its job: `olist_agent` (SELECT on the
 business data), `olist_rag` (SELECT on the retrieval index), `olist_app` (write to the spend

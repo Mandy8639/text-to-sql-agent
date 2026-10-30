@@ -18,4 +18,4 @@ COPY --chown=appuser .streamlit ./.streamlit
 # In a container Streamlit must listen on all interfaces (config.toml says localhost).
 ENV STREAMLIT_SERVER_ADDRESS=0.0.0.0 API_URL=http://api:8000
 EXPOSE 8501
-CMD ["streamlit", "run", "ui/app.py", "--server.port", "8501"]
+CMD ["streamlit", "run", "ui/streamlit_app.py", "--server.port", "8501"]

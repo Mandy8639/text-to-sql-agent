@@ -11,7 +11,7 @@ clarification** instead of guessing. Every claim below is measured on a 123-ques
 with a leakage-guarded test split, plus a blind hold-out set written by someone who never saw
 the prompts.
 
-**Live demo:** _coming soon — see [docs/deployment.md](docs/deployment.md)_ (Hugging Face Spaces + Neon, free tier; may take ~1 min to wake)
+**Live demo:** _coming soon — see [docs/deployment.md](docs/deployment.md)_ (Streamlit Community Cloud + Neon, free tiers; may need a moment to wake)
 
 ![Demo](docs/demo.gif)
 <!-- GIF placeholder: record a 20-30 s screen capture of the UI and save it as docs/demo.gif -->
@@ -96,7 +96,7 @@ Details: [docs/architecture.md](docs/architecture.md) (component diagram, reques
 | **Explanations grounded in the rows**, which are treated as untrusted | Review text is customer-written (indirect injection); invented numbers are flagged | D35 |
 | **Langfuse behind a no-op-by-default tracer** | Full trace per question when configured; zero dependency when not | D34 |
 
-All 36 decisions, with alternatives and tradeoffs: [docs/decisions.md](docs/decisions.md).
+All 38 decisions, with alternatives and tradeoffs: [docs/decisions.md](docs/decisions.md).
 
 ## Limitations and future work
 
@@ -131,7 +131,7 @@ Evaluate:
 
 ```bash
 LLM_MODEL=claude-haiku-5-5 make eval AGENT=v6     # full test split, ~$0.09
-make test                                          # 480+ tests; DB/LLM ones skip if unavailable
+make test                                          # 490+ tests; DB/LLM ones skip if unavailable
 make retrieval-recall                              # retrieval quality, no LLM calls
 ```
 
@@ -143,6 +143,7 @@ make retrieval-recall                              # retrieval quality, no LLM c
 | `make eval AGENT=<v> SPLIT=<s>` | evaluate a version (`baseline`, `v2`…`v6`, `raw-fewshot`) on `dev`, `test` or `holdout` |
 | `make validate-gold` | run every gold query |
 | `make test` / `make test-unit` / `make lint` | tests / tests without services / ruff |
+| `make requirements` | regenerate `ui/requirements.txt` from `uv.lock` |
 | `python -m evals.rescore <run.json>` | re-grade a stored run after a gold fix (no API cost) |
 | `python -m evals.compare_runs A.json B.json` | which questions a change fixed or broke |
 
@@ -157,11 +158,11 @@ rate limits, and a daily spend cap.
 app/          agent/ (baseline, pipeline v2-v6, prompts), retrieval/, safety/, observability/,
               db/, llm/, service.py, charts.py, explain.py, spend.py, config.py
 api/          FastAPI app
-ui/           Streamlit app (talks to the API over HTTP)
+ui/           Streamlit app; HTTP to the API, or in-process on Streamlit Cloud (backends.py)
 evals/        questions.yaml, holdout.yaml, leakage guard, scoring, harness, results/
-scripts/      data load, retrieval index, spend table, Space deploy
+scripts/      data load, retrieval index, spend table, Docker Space deploy
 docs/         schema.yaml, decisions, architecture, failure analysis, deployment, data profile
-docker/       API / UI / Space Dockerfiles, Postgres init
+docker/       API / UI / single-container Dockerfiles, Postgres init
 tests/        unit/ (no services; run in CI) and integration/ (Postgres, index, LLM)
 ```
 

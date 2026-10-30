@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help setup setup-app-db bootstrap stack-up stack-down space-image db-up db-down db-reset load-data build-index profile-data eval eval-all retrieval-recall validate-gold test test-unit lint format run-api run-ui
+.PHONY: help setup requirements setup-app-db bootstrap stack-up stack-down space-image db-up db-down db-reset load-data build-index profile-data eval eval-all retrieval-recall validate-gold test test-unit lint format run-api run-ui
 
 help: ## List available commands
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-17s %s\n", $$1, $$2}'
@@ -32,8 +32,11 @@ stack-up: ## Build and start db + api + ui in Docker (http://127.0.0.1:8501); ru
 stack-down: ## Stop the full Docker stack (keeps the data volume)
 	docker compose --profile app down
 
-space-image: ## Build the Hugging Face Space image locally (API + UI in one container)
+space-image: ## Build the single-container image locally (API + UI)
 	docker build -f docker/space.Dockerfile -t text2sql-space .
+
+requirements: ## Regenerate ui/requirements.txt (what Streamlit Community Cloud installs) from uv.lock
+	uv export --frozen --no-default-groups --group ui --no-hashes --no-emit-project -o ui/requirements.txt -q
 
 build-index: ## (Re)build the pgvector retrieval index (schema chunks + dev examples)
 	uv run python -m scripts.build_index
@@ -73,4 +76,4 @@ run-api: ## Start the FastAPI server on :8000 (docs at /docs)
 	uv run uvicorn api.main:app --host 127.0.0.1 --port 8000
 
 run-ui: ## Start the Streamlit UI on :8501 (needs run-api)
-	uv run streamlit run ui/app.py --server.port 8501
+	uv run streamlit run ui/streamlit_app.py --server.port 8501 --server.address 127.0.0.1

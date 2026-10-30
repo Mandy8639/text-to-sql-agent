@@ -1,4 +1,4 @@
-# Hugging Face Spaces (Docker SDK): API + UI in ONE container, free CPU tier (16 GB RAM).
+# Single-container build: API + UI in ONE container, e.g. a Hugging Face Docker Space (paid plan).
 # Only the UI port (7860) is public; the API listens on 127.0.0.1:8000 inside the container.
 FROM python:3.12-slim
 

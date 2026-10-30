@@ -1,6 +1,6 @@
-# Local development defaults. Phase 7 deployment overrides the address for the host.
+# Shared by every environment, including hosted ones, so no bind address here:
+# `make run-ui` passes --server.address 127.0.0.1; containers set STREAMLIT_SERVER_ADDRESS.
 [server]
-address = "127.0.0.1"   # localhost only; Streamlit's default listens on every interface
 headless = true
 
 [browser]
