@@ -44,11 +44,18 @@ def table_passage(name: str, spec: dict, doc: dict) -> str:
 def _ensure_rag_role(cur: psycopg.Cursor, rag_url: str) -> str:
     url = make_url(rag_url)
     role = sql.Identifier(url.username)
-    cur.execute("SELECT 1 FROM pg_roles WHERE rolname = %s", (url.username,))
-    verb = "ALTER" if cur.fetchone() else "CREATE"
+    cur.execute("SELECT rolsuper FROM pg_roles WHERE rolname = %s", (url.username,))
+    existing = cur.fetchone()
+    verb = "ALTER" if existing else "CREATE"
+    # Managed Postgres (Neon) refuses NOSUPERUSER from a non-superuser, even as a no-op.
+    attrs = (
+        "NOCREATEDB NOCREATEROLE"
+        if existing and not existing[0]
+        else ("NOSUPERUSER NOCREATEDB NOCREATEROLE")
+    )
     cur.execute(
-        sql.SQL("{} ROLE {} LOGIN PASSWORD {} NOSUPERUSER NOCREATEDB NOCREATEROLE").format(
-            sql.SQL(verb), role, sql.Literal(url.password)
+        sql.SQL("{} ROLE {} LOGIN PASSWORD {} {}").format(
+            sql.SQL(verb), role, sql.Literal(url.password), sql.SQL(attrs)
         )
     )
     cur.execute(sql.SQL("ALTER ROLE {} SET default_transaction_read_only = on").format(role))

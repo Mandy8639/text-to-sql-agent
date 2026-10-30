@@ -32,13 +32,17 @@ def ensure_readonly_role(conn: psycopg.Connection, agent_database_url: str) -> s
     schema_id = sql.Identifier(DATA_SCHEMA)
 
     with conn.cursor() as cur:
-        cur.execute("SELECT 1 FROM pg_roles WHERE rolname = %s", (role,))
-        verb = "ALTER" if cur.fetchone() else "CREATE"
+        cur.execute("SELECT rolsuper FROM pg_roles WHERE rolname = %s", (role,))
+        existing = cur.fetchone()
+        verb = "ALTER" if existing else "CREATE"
+        # Managed Postgres (Neon) refuses NOSUPERUSER from a non-superuser, even as a no-op.
+        attrs = "NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS"
+        if not existing or existing[0]:
+            attrs = f"NOSUPERUSER {attrs}"
         cur.execute(
-            sql.SQL(
-                "{} ROLE {} LOGIN PASSWORD {} "
-                "NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS"
-            ).format(sql.SQL(verb), role_id, sql.Literal(password))
+            sql.SQL("{} ROLE {} LOGIN PASSWORD {} {}").format(
+                sql.SQL(verb), role_id, sql.Literal(password), sql.SQL(attrs)
+            )
         )
 
         # Session defaults applied every time the role connects.
