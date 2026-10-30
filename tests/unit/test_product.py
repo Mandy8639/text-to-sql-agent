@@ -99,6 +99,16 @@ def test_explain_fences_rows_as_untrusted_data():
     assert exp.grounded and exp.text == "SP leads with 5,998,226.96 BRL."
 
 
+def test_explain_grounds_row_counts_but_not_other_numbers():
+    rows = [(f"c{i}", 1000 + i) for i in range(73)]
+
+    def run(text):
+        return explain(FakeExplainer(text), "q", "s", ["c", "n"], rows, truncated=False, note=None)
+
+    assert run("Only 40 of 73 categories are shown.").grounded
+    assert run("Only 40 of 74 categories are shown.").ungrounded_numbers == ["74"]
+
+
 def test_explain_survives_llm_failure():
     exp = explain(
         FakeExplainer(error=LLMError("down")), "q", "s", ["n"], [(1,)], truncated=False, note=None

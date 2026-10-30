@@ -109,5 +109,7 @@ def explain(
     except LLMError as exc:
         return Explanation(None, error=str(exc))
     text = resp.text.strip()
-    ungrounded = check_grounding(text, shown, f"{question} {note or ''}")
+    # The model also sees rows_shown and rows_total, so "40 of 73 shown" is grounded too.
+    context = f"{question} {note or ''} {len(shown)} {len(rows)}"
+    ungrounded = check_grounding(text, shown, context)
     return Explanation(text, grounded=not ungrounded, ungrounded_numbers=ungrounded, response=resp)
